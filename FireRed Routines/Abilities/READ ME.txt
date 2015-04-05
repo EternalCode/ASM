@@ -1,0 +1,10 @@
+File AbilityName contains a routine to buffer an ability name. Description, usage, and implementation details found @ http://www.pokecommunity.com/showthread.php?p=8533783#post8533783
+
+
+File AbilitySwap contains a routine to swap abilities.
+
+How to insert:
+Just compile the routine contained in the file into free space.
+
+Usage:
+Set in variable 0x8004 the slot number of the Pokemon who's ability you want to swap. Note that Pokemon with only 1 ability won't have their abilities swapped. I've made it so it's easy to use with special 0x9F in your ability swap item script.
