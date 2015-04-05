@@ -1,0 +1,28 @@
+#dyn 0x740000
+#org @start
+'-----------------------------------
+doanimation 0x28
+waitspecial
+copybyte 0x20370D0 0x2038604
+compare 0x800D 0x8
+if == jump @stormed
+setweather 0x8
+doweather
+msgbox @worked
+callstd MSG_NORMAL
+release
+end
+
+
+#org @stormed
+msgbox @done
+callstd MSG_NORMAL
+release
+end
+
+
+#org @done
+= A Sandstorm is already raging!
+
+#org @worked
+= \v\h02 used Sandstorm!\nA Sandstorm rages wildly.

@@ -1,0 +1,37 @@
+#dyn 0x740000
+#org @start
+'-----------------------------------
+doanimation 0x28
+waitspecial
+copybyte 0x20370D0 0x2038604
+compare 0x800D 0x3
+if == jump @raining
+compare 0x800D 0x5
+if == jump @charged
+msgbox @noClouds
+callstd MSG_NORMAL
+release
+end
+
+#org @charged
+msgbox @done
+callstd MSG_NORMAL
+release
+end
+
+#org @raining
+setweather 0x5
+doweather
+msgbox @worked
+callstd MSG_NORMAL
+release
+end
+
+#org @noClouds
+= There aren't enough clouds to\nabsorb the electric charge.
+
+#org @done
+= The Thunder clouds are\nalready fully charged.
+
+#org @worked
+= \v\h02 used Thunder!\nThe rain clouds become charged.

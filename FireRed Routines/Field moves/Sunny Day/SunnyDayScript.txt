@@ -1,0 +1,16 @@
+#dyn 0x740000
+#org @start
+'-----------------------------------
+lockall
+doanimation 0x28
+waitspecial
+setweather 0x1
+doweather
+msgbox @text ' \v\h02 used Sunny Da...
+callstd MSG_LOCK ' Built-in lock command
+release
+end
+
+
+#org @text
+= \v\h02 used Sunny Day!\nIt became Sunny outside.

@@ -1,0 +1,32 @@
+#dyn 0x740000
+#org @start
+'-----------------------------------
+doanimation 0x28
+waitspecial
+copybyte 0x20370D0 0x2038604
+compare 0x800D 0x3
+if == jump @raining
+applymovement PLAYER @dance
+pauseevent 0x0
+setweather 0x3
+doweather
+msgbox @worked
+callstd MSG_NORMAL
+release
+end
+
+#org @raining
+msgbox @done
+callstd MSG_NORMAL
+release
+end
+
+#org @done
+= It's already raining.
+
+#org @worked
+= \v\h02 used Rain Dance!\nIt started to rain.
+
+#org @dance
+M onspot_down pause_long onspot_down pause_long onspot_down pause_long onspot_down pause_long look_right_delayed pause_short look_up_delayed pause_short look_left_delayed pause_short look_down_delayed pause_short end
+

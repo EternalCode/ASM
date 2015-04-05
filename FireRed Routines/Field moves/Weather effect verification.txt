@@ -1,0 +1,3 @@
+READ BYTE AT 0x2036E15 TO CHECK IF INDOORS
+0x0 = inside
+0x7 = cave (no rain dance or sunny day or thunder, keep sandstorm)

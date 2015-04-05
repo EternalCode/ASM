@@ -1,0 +1,48 @@
+#dyn 0x740000
+#org @start
+lockall
+doanimation 0x25
+waitspecial
+setvar 0x8004 0x3
+setvar 0x8005 15
+setvar 0x8006 10
+setvar 0x8007 5
+special 0x136
+waitspecial
+applymovement 0x10 0x81BE08F
+applymovement 0x11 0x81BE08F
+applymovement 0x12 0x81BE08F
+applymovement 0x13 0x81BE08F
+applymovement 0x16 0x81BE08F
+pauseevent 0x0
+disappear 0x10
+disappear 0x11
+disappear 0x12
+disappear 0x13
+disappear 0x16
+msgbox @usage
+callstd MSG_NORMAL
+special 0xAB
+compare LASTRESULT 0x0
+if == jump @end
+applymovement PLAYER @found
+pauseevent 0x0
+waitspecial
+releaseall
+end
+
+#org @end
+releaseall
+end
+
+#org @found
+m say_? end
+
+#org 0x81BE08F
+M rock_animate end
+
+#org @surp
+M say_! end
+
+#org @usage
+= \v\h01 used Earthquake!\nNearby rocks are destroyed\las the ground trembles.

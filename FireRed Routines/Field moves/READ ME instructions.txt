@@ -1,0 +1,453 @@
+[h1]Field Moves[/h1]
+
+This, I think, deserves it's own thread. However, since I'd have about 90 threads by now if I followed that logic, I'm just going to make a post. I hope to cover how to add any arbitrary field move in addition to some research notes on the matter. This requires a little bit of patience and some table repointing/hex work in order to do. I should say that it's nothing hard, the hardest thing would be repointing a table, which is relatively easy. If you don't know how to do those hex manipulations, ask at the quick question thread, and hopefully myself or someone else will answer.
+
+[h2]Research for Nerds:[/h2]
+
+Hi, if you're a noob just passing through trying to insert this without caring about the technical details, you can skip this section.  Here I will be explaining as much as I know about the BRM for those who want to improve it or are generally curious about how it works in general.
+
+The BRM menu is by far one of the more complicated data structures in the game. It's handled by several separate RAM and ROM data structures which I will attempt to explain. The first one is the BRM's RAM data structure. There are a few attributes which this structure contains, the main one, the one we care about in this case is the cursor's position. It's given in 0203B0A9 and changes depending on which Pokemon you're hovering over. In the case you're in a selection where there are more than one Pokemon to be selected, the byte next to it will hold the second selection. This byte is used (when the player presses the "A" button) to derive other menus and checks by using the simple formula: 0x2024284 + (0x64 * byte) to get the Pokemon.
+There are a few others which are used to determine other things, which I don't be explaining in detail, mainly due to lack of my remembering (did this more than a month ago).
+
+Once the Pokemon is selected using the "A" button, contrary to initial belief, the BRM is generated on the spot, then graphically generated right after. Initially when "A" is pressed, the game loops through the 0x0 terminated Move IDs table  comparing each half-word represented move to each move the Pokemon selected has at the function 0x81229FC. If a move is found, then it will store it in a RAM data structure (same BRM structure) which works very similarly to the start menu. This routine handles Pokemon holding mail too.
+
+With the given data structure fully formed the BRM is graphically created. There are some other things that go into it to pull up the "summary, cancel, item" fields and such (byte toggled in the BRM) but I'm not going to go too deeply about that. Anyways, the BRM RAM structure then handles the browsing of this smaller menu. Once "A" is pressed, the BRM table is used to determine which function to execute. It's format is [string pointer][routine pointer]. The HMs are at the end of this table. 0x81245A4 handles teh case where the selected item in an HM. It does things from badge checking to calling the actual routine, specific to the HM.
+
+In general, you can edit the table for the BRM to change a function to execute a routine of your choosing. However, remember that you need to follow the correct procedures which including closing the BRM and exiting to Overworld ect. The graphics generation and such are left to you if you follow this method. Initially, this is the method I was using.
+
+With some research, and studying, I was able to determine how the BRM item selection worked for HMs which excited to the overworld and called a routine. From there I was able to call a routine which ran a script.
+
+Basically, there were other RAM locations allocated to hold routine pointers which were executed by the game at certain times. Cut for example, would first check the map, the tiles infront of the player (if they were grass), the coords infront of the player, ect. before executing. From there, there were two cases which executed differently. Believe it or not, cut does not always execute a script. The first method is that it sets the tiles infront of the player to plain grass (so it actually cuts wild grass, try it yourself by walking into a patch of grass and using CUT !), the second case it executed the script. 
+
+I think it's better to read the rest of the tutorial to see how those things work, rather than listening to my kinda long explanations.
+
+
+[h2]Repointing some tables (noob friendly edition):[/h2]
+
+Before we begin, there are a few tables which need repointing. Please write down the offsets to where you paste the hex I give you. For your sake, once again, please write down where you place these tables to.
+
+[B]Table 1: Move IDs table: [/B]
+
+Copy and place into free space:
+Make sure the offset you copied this table to is half-word divisible (ends in 0, 2, 4, 6, 8, A, C, E)
+[code]
+94 00 0F 00 13 00 46 00 39 00 F9 00 7F 00 64 00 5B 00 D0 00 87 00 E6 00 0C 00
+[/code]
+
+
+Now navigate to 0x122A7C and change the reverse hex pointer to be the pointer where you copied the above hex table to. 
+
+[b]Table 2: Launch Pad routine table + properties [/b]
+
+Copy and place into free space:
+Make sure the free space offset is word divisible (ends in 0, 4, 8, C)
+[code]
+2D 9B 0C 08 0D 00 00 00 99 78 09 08 07 00 00 00 8D 4A 12 08 0D 00 00 00 ED 07 0D 08 0D 00 00 00 99 49 12 08 08 00 00 00 D9 99 0C 08 0D 00 00 00 F9 4A 12 08 0D 00 00 00 F1 66 0F 08 0D 00 00 00 79 9A 0C 08 0D 00 00 00 85 56 0E 08 10 00 00 00 85 56 0E 08 10 00 00 00 C9 E0 0D 08 0D 00 00 00
+[/code]
+Now navigate to 0x124614 and 0x124680 and change the reverse hex pointer to be the pointer where you copied the above hex table to. 
+
+[b]Table 3: BRM names + launcher[/b]
+
+Copy and place into free space:
+Make sure the free space offset is word divisible (ends in 0, 4, 8, C)
+[code]
+94 69 41 08 4D 2D 12 08 8D 69 41 08 01 2E 12 08 C1 61 41 08 41 36 12 08 D4 61 41 08 A1 36 12 08 B2 61 41 08 05 37 12 08 DE 61 41 08 39 3C 12 08 D9 61 41 08 F5 3C 12 08 B2 69 41 08 0D 3E 12 08 B7 69 41 08 59 3D 12 08 C1 61 41 08 65 40 12 08 7E 69 41 08 F5 40 12 08 84 69 41 08 F5 40 12 08 A3 69 41 08 55 41 12 08 A9 69 41 08 79 42 12 08 E3 61 41 08 55 43 12 08 F4 B6 41 08 85 43 12 08 BC 69 41 08 91 44 12 08 BC 69 41 08 A1 45 12 08 18 78 24 08 A5 45 12 08 57 71 24 08 A5 45 12 08 8B 71 24 08 A5 45 12 08 22 74 24 08 A5 45 12 08 79 73 24 08 A5 45 12 08 39 7D 24 08 A5 45 12 08 07 77 24 08 A5 45 12 08 A8 75 24 08 A5 45 12 08 33 75 24 08 A5 45 12 08 24 7B 24 08 A5 45 12 08 6F 77 24 08 A5 45 12 08 42 7C 24 08 A5 45 12 08
+[/code]
+Now navigate to 0x120F74, 0x121FB8, 0x122D18, 0x122D48 and change the reverse hex pointer to be the pointer where you copied the above hex table to. 
+
+[b]Table 4: Field move description pointers table[/b]
+
+Copy and place into free space:
+Make sure the free space offset is word divisible (ends in 0, 4, 8, C)
+[code]
+83 75 41 08 33 75 41 08 48 75 41 08 6E 75 41 08 5D 75 41 08 96 75 41 08 AE 75 41 08 FB 75 41 08 CC 75 41 08 F1 75 41 08 F1 75 41 08 DE 75 41 08
+[/code]
+Now navigate to 0x1221D0 and change the reverse hex pointer to be the pointer where you copied the above hex table to. 
+
+That's all for table repointing. I hope you wrote down the offsets for them in some recognizable format. I.e:
+Table 1: Offset
+Table 2: Offset
+Table 3: Offset
+Table 4: Offset
+Because that's how I will refer to them AND we'll need them very soon.
+
+
+[h2]Making your move's script -> The fuel[/h2]
+
+You are lucky. You are lucky I suffered many hours figuring this out so you can use scripts rather than routines and have an easy time setting up field moves. Anyways, the first step is to write out your script which you will be using. In this "tutorial/resource/research" thing I will be inserting Sunny Day in an attempt to give a relevant example of how to set things up.
+
+Here's my PKSV script:
+[spoiler]
+[code]
+#dyn 0x740000
+#org @start
+'-----------------------------------
+'OK a little ASM-esque. Basically checking if we're indoors.
+'If we aren't, jump @continue
+'-----------------------------------
+lockall
+copybyte 0x20370B8 0x2036E13
+compare 0x8000 0x3
+if == jump @continue
+compare 0x8000 0x1
+if == jump @continue
+compare 0x8000 0x6
+if == jump @continue
+compare 0x8000 0x2
+if == jump @continue
+msgbox @indoors
+callstd MSG_NORMAL
+release
+end
+
+#org @continue
+'standard HM animation
+doanimation 0x28
+waitspecial
+setweather 0x1
+doweather
+msgbox @text ' \v\h02 used Sunny Da...
+callstd MSG_LOCK ' Built-in lock command
+release
+end
+
+
+#org @text
+= \v\h02 used Sunny Day!\nIt became Sunny outside.
+
+#org @indoors
+= Can't make it sunny inside[.]
+[/code]
+[/spoiler]
+
+If you're lost at the script, or don't know how to make a script, then you'd better go learn! This script is admittedly, a little more complicated than what I'd expect people to use. Its because I'm using some scripting and ASM knowledge to determine whether or not we're indoors. It's a special case only relevant to weather effects. The rest of the script is normal. Note that your script can be pretty much anything, but please beware of the recursion limits (i.e calling callasm and that ASM calling a script...ect..).
+
+Once you've written the script, compile it to free space, and write down where you've compiled the script. Mine compiled to 0x740001 for example.
+
+
+[h2]Setting up our Phase 2 routine -> The Rocket[/h2]
+
+Once you've compiled a suitable script, and tested the script individually to make sure it works, you're ready to set up your rocket. I call it Rocket because this routine will be the one calling the script.
+It will also be the routine which is called by our launchpad routine. Anyways, more on that later.
+
+[code]
+.text
+.align 2
+.thumb
+.thumb_func
+
+main:
+	push {r4, lr}
+	ldr r0, =(0x203B0A0)@selected mon
+	ldrb r0, [r0, #0x9]
+	ldr r1, =(0x20386E0) @oe state
+	lsl r0, r0, #0x18
+	lsr r0, r0, #0x18
+	str r0, [r1]
+	ldr r0, =(0x8YYYYYY) @script pointer, don't +1
+	ldr r4, =(0x8069AE4 +1)
+	bl linker
+	pop {r4, pc}
+	
+linker:
+	bx r4
+	
+.align 2
+[/code]
+
+In the above routine, you will need to modify the script pointer line. Change the YYYYYY into the offset your script was compiled into. Once you've done that, simply compile the routine into free space.
+Once again, write down the offset in which you've compiled the routine into and make sure you've inserted this routine into a word aligned offset.
+
+
+[h2]Setting up our Phase 1 routine -> The Launchpad[/h2]
+
+This routine is going to be our Phase 1 routine. This routine will do the initial checks we want and then call the rocket routine. Actually, this structure is a little weird, because you can just as easily fulfill it's functionalities within the second routine. I've yet to figure out the reason as to why this is, but it just is this way.
+
+[code]
+.text
+.align 2
+.thumb
+.thumb_func
+
+main:
+	push {lr}
+	ldr r1, =(0x3005024) @Phase 1
+	ldr r0, =(0x81248B0 +1) @launch pase 2
+	str r0, [r1]
+	ldr r1, =(0x203B0C4) @Phase 2
+	ldr r0, =(0x8YYYYYY) @Rocket routine
+	str r0, [r1]
+	mov r0, #0x1
+	pop {r1}
+	bx r1
+	
+.align 2
+[/code]
+
+In the above routine, you will need to modify the Rocket routine line's "0x8YYYYYY" into a pointer to wherever you placed the Rocket 2 routine +1. Once you've done that compile this routine into free space. Make sure that this routine is compiled into a word aligned offset.
+
+[h2]String setup[/h2]
+
+Our last task before modifying some tables is to set up the string descriptions which will be brought up when the move is hovered over. The first task is to create the string. My string will be,
+"Makes it Sunny outside!". This in Hex is "C7D5DFD9E700DDE800CDE9E2E2ED00E3E9E8E7DDD8D9AB". Lastly, the game doesn't know how long or when the string ends. It's required that we specify this by using the string terminating character. 
+This in FireRed (and actually all ROMs in gen III) is 0xFF. So the string then becomes "C7D5DFD9E700DDE800CDE9E2E2ED00E3E9E8E7DDD8D9ABFF". If you're not sure how to convert an ASCII string to HEX without messing it up, then I'll tell you that there's a 1-1 correspondence between the two. Use this table to generate a string, or you can use this Python program I wrote (if you have Python).
+
+Remember that the size of the string is also limited. I don't recall how many characters will fit before overflow, but keep it about 20 Characters long max.
+
+Table:
+[spoiler]
+[code]
+00= 
+01=À
+02=Á
+03=Â
+04=Ç
+05=È
+06=É
+07=Ê
+08=Ë
+09=Ì
+0B=Î
+0C=Ï
+0D=Ò
+0E=Ó
+0F=Ô
+10=Œ
+11=Ù
+12=Ú
+13=Û
+14=Ñ
+15=ß
+16=à
+17=á
+19=ç
+1A=è
+1B=é
+1C=ê
+1D=ë
+1E=ì
+20=î
+21=ï
+22=ò
+23=ó
+24=ô
+25=œ
+26=ù
+27=ú
+28=û
+29=ñ
+2A=º
+2B=ª
+2D=&
+2E=+
+34=[Lv]
+35==
+36=;
+51=¿
+52=¡
+53=[pk]
+54=[mn]
+55=[po]
+56=[ké]
+57=[bl]
+58=[oc]
+59=[k]
+5A=Í
+5B=%
+5C=(
+5D=)
+68=â
+6F=í
+79=[U]
+7A=[D]
+7B=[L]
+7C=[R]
+85=<
+86=>
+A1=0
+A2=1
+A3=2
+A4=3
+A5=4
+A6=5
+A7=6
+A8=7
+A9=8
+AA=9
+AB=!
+AC=?
+AD=.
+AE=-
+AF=·
+B0=[.]
+B1=[""]
+B2=""
+B3=[']
+B4='
+B5=[m]
+B6=[f]
+B7=[$]
+B8=,
+B9=[x]
+BA=/
+BB=A
+BC=B
+BD=C
+BE=D
+BF=E
+C0=F
+C1=G
+C2=H
+C3=I
+C4=J
+C5=K
+C6=L
+C7=M
+C8=N
+C9=O
+CA=P
+CB=Q
+CC=R
+CD=S
+CE=T
+CF=U
+D0=V
+D1=W
+D2=X
+D3=Y
+D4=Z
+D5=a
+D6=b
+D7=c
+D8=d
+D9=e
+DA=f
+DB=g
+DC=h
+DD=i
+DE=j
+DF=k
+E0=l
+E1=m
+E2=n
+E3=o
+E4=p
+E5=q
+E6=r
+E7=s
+E8=t
+E9=u
+EA=v
+EB=w
+EC=x
+ED=y
+EE=z
+EF=[>]
+F0=:
+F1=Ä
+F2=Ö
+F3=Ü
+F4=ä
+F5=ö
+F6=ü
+F7=[u]
+F8=[d]
+F9=[l]
+FA=\l
+FB=\p
+FC=\c
+FD=\v
+FE=\n
+FF=\x
+[/code]
+The Hex is on the left, and on the right is the Ascii equivalent.
+[/spoiler]
+
+Python program:
+[spoiler]
+[code]
+with open('C:/-YOUR PATH TO THE TABLE FILE-/Table.txt') as f:
+    lines = f.read().splitlines()
+for i in range (0, len(lines)):
+    lines[i] = lines[i].split('=')
+convert = raw_input("enter string: ")
+result = ""
+check_version = raw_input('H2A or A2H?')
+if (check_version == "1"):
+    for char in convert:
+        for element in lines:
+            if element[1] == char:
+                result += (element[0])
+    print(result)
+else:
+    convert = convert.split(" ")
+    for index in convert:
+        for element in lines:
+            if element[0] == index:
+                result += (element[1])
+    print(result)
+[/code]
+For the prompts:
+Prompt #1: Enter a hex or Ascii string
+Prompt #2: 1 to convert to Hex; anything else to convert to Ascii.
+[/spoiler]
+
+Paste your Hex string into some free space in the ROM.
+
+Next, we need to find our Move's name in hex. I recommend finding it in the Move name table at 0x247094. Here's a simple formula you can use to find it:
+Offset = 0x247094 + (0xD * MoveID)
+Where MoveID is the move index number. Pound is 0x1 for example. It should be noted that if you have expanded the move tables via MrDS's patch or on your own, that 0x247094 won't be the correct offset. Actually, I think his patch is bugged here because the BRM table uses points in the old table, which he couldn't possibly have repointed without knowing. Anyways, it doesn't prove a problem unless you plan to make one of the expanded move names to appear using the move name table. Write down the offset of your move name as well as the description pointer.
+
+[h2]Editing the tables[/h2]
+
+Here are the important offsets you should have written:
+Table 1-4 locations
+Phase 1 routine: Launcher
+Move Description pointer
+Move Name pointer
+
+Firstly, we're going to handle Table 1 first. This is a table of reversed half-word move IDs. The game reads these ID numbers using ldrh (load half-word) which internally reverses them. ldr is the same functionality, that why we need to reverse hex our routine pointers and various other things. Anyways, I'm getting off topic, so I'm going to explain what to do to this table.
+
+The table itself is 0C 00 terminated, which is both weird and bad. Weird because 0xC is Guillotine, bad because someone may be interested in using Guillotine as a field move. So first of all, before we attempt anything, we'll be changing how the game reads this table, to terminate it upon reading 0x0 (which in the hex editor is 00 00 because it should be a half word), since 0x0 represents null move.
+
+To do this, navigate to 0x122A8C and change the byte from 0C to 00.
+
+Finally, edit your table to include the Move IDs of the field moves you want. My table for example looks like this right now:
+[quote]
+94 00 0F 00 13 00 46 00 39 00 F9 00 7F 00 64 00 5B 00 D0 00 87 00 E6 00 F0 00 59 00 57 00 C9 00 00 00
+[/quote]
+
+I've added after E6 00 (which is ID 0xE6 sweet scent) F0 00 59 00 57 00 C9 00 F1 00 00 00
+F0: Rain dance, 59: Earthquake, 57: Thunder, C9: Sandstorm, F1: Sunny day. Then at the end I put in the "00 00" to show the end of the move detection table. Make sure your table is of similar format, except with the move IDs you want.
+
+[b]After these edits[/b] go in game, and check if your game freezes upon pressing "a" on the selected Pokemon. If it does, then your table is messed up OR you've messed up something with these last few steps. The expected result is that you get weird characters (or no chars at all) in blue if your Pokemon has a move whose ID is in the table. We will be fixing these "glitched" names and such soon. Don't try using the move outside of battle yet, because you will crash your game.
+
+
+We're going to briefly skip table 2, and go onto table 3.
+This table is a little weird, because it's not terminated at all. It's browsed using an index number. Generally the moves are at the bottom, and each successive move in the move ID table is 1 entry past the last entry. So in short, for every move we add the the move ID table (table 1) we need to add an entry to this table (table 3).
+
+Table 3 is formatted: [4 bytes (Pointer to name)] [4 bytes (Pointer to Routine)]
+
+If you're doing to launch a routine instead of a script, the pointer to routine will be your routine's address +1. The chances are, you're going to use a script though. So farmat your entries like this:
+[Move name pointer (4 bytes)][081245A5 - BRM HM launching sequence].
+Navigate to the word aligned offset you placed table 3 in, and add the following 8 bytes:
+[code]XX XX XX 08 A5 45 12 08[/code]
+Where XX XX XX is a pointer to your moves name (which you should've written down prior). In my case, the hex was, "D1 C7 24 08 A5 45 12 08".
+
+[b]After these edits,[/b] test it again. This time the blue gibberish should've turned into a move name. If it hasn't, you've messed up somewhere above.
+
+Now we'll edit table 2, this will make selecting the move actually do something.
+Table 2 consists of a routine pointer that is called by the routine 081245A4, as well as a mode. 95% of the time this mode is 0xD (the other mode is 0x10 used for Milkdrink and Softboiled). The routine pointer is simply going to be a pointer to Phase 1 routine: Launcher (which you should have written down). Like table 3, this is browsed by index and isn't terminated by a byte or sequence of bytes. So simply add to the end of the table, the following hex string:
+[code]
+XX XX XX 08 0D 00 00 00
+[/code]
+Where XX XX XX is a reverse hex pointer to Phase 1 routine: Launcher.
+
+[b]After these edits,[/b] test your game again. This time, everything should be fully functional. Routine should be called, and the whole effect should happen. If it doesn't, you've done something wrong in the above steps.
+
+Finally, we're on the last step, it's to change the move description which pops up when the move is highlighted. The Move Description pointer which you should have written down is what I'm referring to.
+In Table 4, simply append the move description pointer. That's it, you've successfully added a new field move!
+
+[h2]My condition for using this hack[/h2]
+Unlike most hacks, this is a little different. It's open source, and you're free to use it. However, I require you post the script you use for any of your moves. This is because I want people to keep anything regarding this hack public.
+Just post the script you use in your own thread, and that'll be it (like the Sunny Day script I used).
