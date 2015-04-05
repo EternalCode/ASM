@@ -1,0 +1,485 @@
+[h1]Basic tips and tricks when ASM hacking[/h1]
+
+I decided to do a little bit of a tutorial-kinda write up of a few tricks and tips which I use when I'm writing routines. I hope to go over some
+of the more less known uses for some OP codes as well as how to work with pointers, tables and similar stuff in an ASM context. I should warn you
+that this tutorial assumes you already have atleast a vague idea of what OP codes do. I'm not going to be explaining technically what they do, 
+unless of course its needed to understand the context. In general I assume you already know what some commands are doing.
+
+
+[h2]Deriving larger constants into a register[/h2]
+
+There are a lot of times where you need to assign a value to a register. I'll give you an example. Say in my routine I wanted to do something
+if flag 0x828 (the Pokemon menu) flag was set. Well, before I can check that flag I first need to set a register to 0x828, obviously. But how can
+one go about doing that? First try on your own to make a routine which sets register zero to 0x828. Once you have a working solution look at mine
+in the spoiler below. I encourage you to first make your own solution. Push all the registers you need in your routine as well. For now, don't
+worry about the .txt .align and that stuff at the top and bottom, just write the body.
+
+[spoiler]
+
+Here's one way you may have tried doing this:
+[code]
+main:
+	push {r0, lr}
+	@try loading 0x828 directly into r0
+	mov r0, #0x828
+	pop {r0, pc}
+[/code]
+
+If you tried it this way, you'll be sad to hear me tell you that this doesn't work. The mov command is only capable of loading values upto 0xFF
+and 0x828 is MUCH MUCH larger than 0xFF. If you tried compiling the above, your compiler will most definitely warn you and fail to compile. Please
+note that this is only true when loading immediates into a register. If we did something like "mov r1, r0", then it will copy whatever is in r0
+into r1 without any restrictions. The mov command is only restricted when loading immediates. Since that was shot down, lets try again.
+
+[code]
+main:
+	push {r0-r1, lr}
+	
+	@set r0 and r1 to some values
+	mov r0, #0xFF
+	mov r1, #0x8
+	
+	@multiply r0, and r1 (0xFF * 0x8) = 0x7F8
+	mul r0, r0, r1
+	
+	@add 0x30 to 0x7F8 to get 0x828
+	add r0, r0, #0x30
+	pop {r0-r1, pc}
+	
+[/code]
+Unlike the previous solution, this one actually works. We first load some immediates (constants) and then we multiply them together. From there
+we just add the remaining amount to get to 0x828.
+
+But how did I know to do r0 = 0xFF and r1 = 0x8? All I did was divide 0x828 by 0xFF which was 8.188, I then threw away the remainder. So if r0
+was 0xFF I needed to multiply it with 0x8 plus a little more. So I multiplied 0xFF with 0x8 to get 0x7F8. The difference between 0x7F8 and 
+0x828 was just 0x30, so we add 0x7F8 by 0x30. It's a simple calculation you can do on your calculator. If you didn't understand how we got to
+0x828 from the above code, look at it hard and try to think of what each command is doing. If you still have questions ask now. It's going to 
+get a little more harder from here.
+
+Perfect, we got out 0x828, we've succeeded right? Well not quite. You may or may not know, but the "mul" command is very slow. It's highly 
+encouraged that you avoid it if you can (there will be situations you can't avoid it, and that is completely fine). Lets try something else.
+
+[code]
+main:
+	push {r0, lr}
+	mov r0, 0xFF
+	add r0, r0, #0xFF
+	add r0, r0, #0xFF
+	add r0, r0, #0xFF
+	add r0, r0, #0xFF
+	add r0, r0, #0xFF
+	add r0, r0, #0xFF
+	add r0, r0, #0xFF
+	add r0, r0, #0x30
+	pop {r0, pc}
+[/code]
+
+Well, we ended up being able to save a register, but the code is well... less than ideal. "add" like "mov" is restricted when adding immediates.
+So we end up having to add multiple times. It should be noted that add is much faster than mul so in general this might seem like a better 
+approuch, however, with the sheer number of "add" we had to do, mul is actually the faster way. The only benefit of doing it this way is that we
+save a register. But in reality, this way is definitely not feasible. Imagine if we wanted to load something like 0xFFFF into the register.
+Imagine how many "add" commands that would require, it would end up being 30 lines of "add r0, r0, #0xFF". We can do better, lets look at
+another, better, possible solution.
+
+[code]
+main:
+	push {r0, lr}
+	mov r0, #0xFF
+	lsl r0, r0, #0x3
+	add r0, r0, #0x30
+	pop {r0, pc}
+[/code]
+
+Believe it or not, this will end up putting 0x828 into r0. "BUT FBI, HOW?! WHY?! LSL IS MEANT FOR SHIFTING BITS?? THIS DOESN'T MAKE SENSE!!!".
+Actually it makes perfect sense and I'll explain to you why. Before you being to understand how this is working, you first need to know that a
+register can only hold a maximum of 4 bytes (or 32 bits). If a register's value is less at 4 bytes the start is padded with zeros. So really if
+we did something like "mov r0, 0xC", then the register's value would obviously turn into 0xC. What it really looks like is: r0=0000000C. If 
+you have seen registers in a debugger this is often the visual representation.
+Getting back on topic, lsl, as you should know, is an operation which modifies a register on the bit level. Specifically "lsl" will shift a
+register 1 bit to the left. It achieves this by appending a "0" and deleting the first bit of the register.
+example:
+	if r0 =000000FF
+	0xFF in decimal is 255. 255 in binary is 11111111, 4 bytes in binary is 32 bits long so the register representation in binary is:
+	r0 =00000000000000000000000011111111
+	if we did lsl #0x1 to r0 now we would get:
+	r0 =00000000000000000000000111111110
+	Bonus: What is the hex value of r0 right now? 
+	Answer: 0x1FE.
+	
+Clearly by appending a zero to the end, we've effectively multiplied the value in r0 by 2. Warning, the following in spoilers is a mathamatical
+rant and it may or may not boggle your mind. If it does I appologize, but it's needed for understanding how lsl and lsr works. If you don't
+understand the math, don't worry. Just read the last paragraph of the spoiler.
+[spoiler]
+First of all, all numbers in decimal (base 10) can be expressed in sums of products of their digits and 10 raised to the digit index. This is
+true for any valid mathamatical language. Binary is a valid mathamatical language which operates on base 2. Lets look at an example of a number
+which is base 10 and represented in a way I described above.
+
+9857 = 9*(10^3) + 8*(10^2) + 5*(10^1) + 7*(10^0)
+Like this the same can be said for binary. That is:
+1101 = 1*(2^3) + 1*(2^2) + 0*(2^1) + 1*(2^0)
+
+If we added a zero, then the exponential value (in brackets) for each term would increase by 1. This implies that shifting a binary number by
+one to the left would increase each digits contribution to the value by a whole power of two, so overall the number would increase 2 fold. It
+can be proven by mathamatical induction that this holds, but I'll spare you my nerdiness for now :P
+
+What you need to take away is that for each zero we append to a binary number, it's the same as multiplying it by 2  each time. So shifting it
+two times to the left is the same as multiplying it by 2 and then again by 2. Which implies at it's exponential. Yes, that means that we can do 
+something like lsl r0, r0, #0x3 (adding 3 zeros) and it would be the same as doing r0 = r0 * 2 * 2 *2 which is obviously r0 = r0 * 8.
+I hope you're not surprised when I say that lsr does the opposite. That is, it divides by 2 exponentially. So lsr r0, r0, #0x3 = r0 / (2*2*2),
+which is obviously r0 = r0/8.
+[/spoiler]
+
+So now that you've read up about how lsl works, you'll notice that I'm using it to multiply r0 by 8 (in the example). "lsl" and "lsr" are both
+very very fast commands (much faster than mul) and should always be use (if possible) for a substitution of mul. Here the algorithm is exactly
+the same as it was for the "mul" code, but we're using lsl and one register less! 
+
+Basically:
+mov r0, #0xFF     @r0 = 0xFF
+lsl r0, r0, #0x3  @r0 = r0 * 8 (which is 0x7F8)
+add r0, r0, #0x30 @0x7F8 + 0x30 = 0x828!
+
+There's one other way which has to do with symbols, and is useful for larger numbers or numbers which come up often. Here it is:
+
+[code]
+main:
+	push {r0, lr}
+	ldr r0, value
+	pop {r0, pc}
+
+.align 2
+
+value:
+	.word 0x828
+[/code]
+
+I think this is straight forward so I'm not going to explain very much. It's basically loading the immediate which "value" is pointing to.
+I personally don't like doing it this way unless "value" needs to be derived multiple times (in which case your routine is probably poorly designed).
+
+[/spoiler]
+
+
+[h2]Working with tables and pointers[/h2]
+
+Tables are the main (actually probably the only) way which the game organises it's data. Tables can be seen when dealing with moves, abilities, Pokemon,
+names, sprites, functions, and a lot of other things. When you're writing ASM routines, it's often the case that you will need to read through a table.
+Or if you're writing ASM routines, sometimes you may want to allow others to easily custimize it by reading things from a table. In this section
+I will be explaining how you would go about processing a table in ASM.
+
+There are in general two types of tables in the game. The first type of table is terminated by a terminating byte or entry. The second type doesn't
+have any termination indicators, but is expected to have a fixed length. Sadly the second type of table is mainly from poor design, but we still have
+to deal with it. Moving on, both types of table have all their data formatted in equal lengths. 
+Take the move name table for example. Moves like "Haze" obviously have shorter names than moves like "Perish song", however in the table they always take 
+the same amount of space. This is because every table has "padding" which are basically 99% of the time "00" bytes which act as a filler between the first
+index and the second index of the table. You might wonder why I'm explaining how tables work in an ASM tutorial, but I think it's important to clear 
+any misunderstandings before proceeding to the ASM.
+
+To write ASM for browsing through a table we need:
+1) The amount of bytes each entry in the table takes up (they are all the same because of the padding I talked about)
+2) The address to the first entry of the table (well we need to know where the table is)
+
+Lets try writing some ASM to do things with some existing tables.
+
+[b]The move guessing game:[/b]
+We're going to work with the move names table.
+1) Each name is 13 bytes long and ends with 0xFF as a terminator
+2) The table does not have a terminating byte
+3) The table starts at 0x8247094
+
+The task:
+Don't worry about the stuff at the start or end of the routine (the .align 2, .thumb ect. Just write the body).
+Load into r0 the address of the 20th move (i.e the move in the 13th index). Try it before looking at my solution.
+Hints: 
+- In this case it's easier to use mul than lsl. So use mul.
+- Use ldr r0, =(0x8247094) to load the table's pointer
+
+Bonus: Can you load the first letter of the move?
+[spoiler]
+[code]
+main:
+	push {r0-r1, lr}
+	mov r0, #0x13 @index size
+	mov r1, #0x20 @move ID
+	mul r1, r1, r0 @r1 contains how far in the table we need to go before finding the move's name
+	ldr r0, =(0x8247094) @the move table
+	add r0, r0, r1 @the address of the 20th move's name
+
+@if you did the bonus you would have this line before the pop	
+bonus:
+	ldrb r0, [r0] @the first letter of the 20th move
+	pop {r0-r1, pc}
+[/code]
+
+Smooth. Here we knew which index in the table we wanted, so we just multiplied the size of an index of the table with the entry number we wanted.
+And then added that to the start of the table. If you don't understand how or why that gives the 20th move's address, then look at the code above
+and try to make sense of it. If you can't then read up on tables and ask immediately. The next part is going to be harder.
+[/spoiler]
+
+That's how you would read from a table if you knew which index you wanted. What if you were searching for something in a table?
+Lets say that you had a table of item IDs which in your Hack were considered "sellable". Now lets say you have an Item with ID 0x55. How would
+you know the item is sellable given the table? You would have to search every index in the table until you reach the end, OR find byte 0x55.
+Lets try seeing if 0x55 in in a table which terminates with 0xFFFF (that means the end of the table, is signified by 0xFFFF btw). Notice
+that I said the terminator was 0xFFFF. That's because item IDs are halfwords, so the terminating "byte" is actually 2 bytes. Try it yourself 
+and then look at my solution. Once again, you just include the main body for now.
+
+1) Pretend table starts at 0x740000
+2) Pretend each item ID is a half word (2 bytes)
+Hint: Instead of ldrb use ldrh to load a half word.
+Bonus: Set r0 to 0x0 if we find 0x55. If we don't find it set r0 to 0x1
+
+Solution:
+[spoiler]
+[code]
+main:
+	push {r0-r2, lr}
+	ldr r0, =(0x8740000)
+	mov r2, #0xFF
+	lsl r2, r2, #0x8
+	add r2, r2, #0xFF
+	
+loop:
+	ldrh r1, [r0]
+	cmp r1, r2
+	beq endofTable
+	cmp r1, #0x55
+	beq found
+	add r0, r0, #0x2
+	b loop
+	
+found:
+	mov r0, #0x0
+	b end
+	
+endOfTable:	
+	mov r0, #0x1
+	
+end:
+	pop {r0-r2, pc}
+	
+[/code]
+
+So this solution might confuse you guys. We've used the "b" command which is an unconditional branch (i.e always branches) as a way to "loop"
+through our table until some conditions in the middle are met for the loop to exit out of it's loop body. Take some time to analyze breifly
+what's going on in the above code, then glace below for a commented version.
+
+[code]
+main:
+	push {r0-r2}
+@load r0 the start of the table
+	ldr r0, =(0x8740000)
+@the lsl math we learned is useful already!
+@we set r2 to be 0xFFFF which is our terminating byte
+	mov r2, #0xFF
+	lsl r2, r2, #0x8
+	add r2, r2, #0xFF @here r2 = 0xFFFF
+	
+loop:
+@load a half word from r0, and put it in r1
+	ldrh r1, [r0]
+@if half word is 0xFFFF then we're at the end of the table
+	cmp r1, r2
+	beq endofTable
+@if halfword is 0x55 we found the item, branch to found
+	cmp r1, #0x55
+	beq found
+@all the other results the half word can be, we don't care about
+@simply add 2 to the address specified in r0 to get to the next two bytes
+	add r0, r0, #0x2
+@start from the begining of "loop:" remember r0 is 2 more than before now
+	b loop
+	
+found:
+	@we get here if 0x55 was in the table
+	@mov r0 to 0x0 for the bonus
+	mov r0, #0x0
+	b end
+	
+endOfTable:	
+	@we're at the end of the table, i.e 0x55 not here
+	@mov r0 0x1 for the bonus
+	mov r0, #0x1
+	
+end:
+	pop {r0-r2}
+	
+[/code]
+I haven't introduced any new commands or concepts so I think we'll end this loop explanation soon. Before we do though, I'll show you some pseudo-
+code for what this is actually doing:
+
+[code]
+Read half bytes from offset 0x740000 until:
+	if item is 0xFFFF:
+		set r0 to 0x1 and end
+	if item is 0x55
+		set r0 to 0x0 and end	
+[/code]
+That's literally how simple this was. So I'm going to move on.
+
+[/spoiler]
+
+
+[h2]Using functions in the game[/h2]
+
+Before I explain to you how to use a function, I should first explain to you what a function is like. Basically it's a bit of code which performs
+a series of operations based on 0 or more paramaters it's given. An example of a function would be the "checkflag" command we know from scripting.
+This command, is parsed from your script by the scripting engine into ASM.
+
+[code]
+checkflag 0x828
+[/code]
+So checkflag is actually a function with takes a flag number as it's paramater. It returns in Lastresult the status of that flag, 0x0 for unset and
+obvously, 0x1 for set. Like that there are functions in ASM. Obviously in ASM they are much more "raw" then our friendly scripting languages.
+
+The check flag function in ASM is located at 0x806E6D0. It takes a flag number in r0, and after execution, it returns in r0, 0x0 for unset and 0x1 if set.
+This happens to also be the function your scripting command "checkflag" is calling in the end after its done parsing your paramaters. 
+
+Lets try using it to see if flag 0x828 is set.
+
+[code]
+main:
+	push {r0-r2, lr}
+@derive 0x828 in register r0
+	mov r0, #0xFF
+	lsl r0, r0, #0x3
+	add r0, r0, #0x30
+@this is how we call the function
+	ldr r1, =(0x806E6D0 +1)
+	bl linker
+@check if set or not
+	cmp r0, #0x1
+	beq set
+	pop {r0-r2, pc}
+
+set:
+	@if we get here it's set
+
+linker:
+	bx r1
+[/code]
+
+Take a moment to understand what I've done here. Basically, we know that the function takes in r0 a flag number for a paramater. So we made
+r0 to be 0x828. We can called the function using a free register and bl linker (I will talk about that soon). After that, the function puts
+in r0 the state of the flag. We then checked if the flag was set, if it was goto set, else just end the routine.
+
+As promised I'll talk briefly about 
+[code]
+	@stuff here
+	ldr r1, =(0x806E6D0 +1)
+	bl linker
+	@Proceed to do stuff here
+
+linker:
+	bx r1
+[/code]
+
+As you should know, "bl" is a the branch with link command. It basically jumps to some point in the ROM and writes to the link register the
+address of the next instruction. Then when the function it jumped to is done and does "pop {pc}" or returns some other way, it will return back
+to whichever address was written into the link register. Unfortunately the "bl" command is limited. You compiler will not let you compile this 
+due to the reason that "bl" might not be able to reach the function. So instead we use "bx", which jumps to a function and has unlimited range.
+However, unlike "bl", the "bx" command doesn't write to the link register. So we find this clever way of combining the two commands to jumped
+to a function AND return, when normally we couldn't. So in this example, after the flag checking function finishes doing it's stuff, the code will
+jump back to the part where I'm written "@Proceeds to do stuff". It's fine if you don't understand this part, as it requires some understanding of 
+how the link register works and a few technical details on the instruction set, all you really need to take away is how we do it. But if you 
+want to be a good ASM hacker, definitely take the time to understand what's going on here.
+
+
+[h2]Manipulating registers even more[/h2]
+
+Hmm, this topic is a little more advance, but I think at this level it can be handled quite well. Basically I'll be talking about how to use 
+lsl and lsr to remove "garbage" data from registers as well as how to concatenate values in registers. I'm going to start it off with a practical
+example. As you may know, each Pokemon in FireRed is unique even among the same species. This is caused because most of the Pokemon's base values
+are determined by a random value the Pokemon is assigned called the Pokemon ID, or PID for short. 
+
+The PID is formed by combining two pseudo-random numbers the game created. The way they are combined aren't mathamatical, but rather by concatenation.
+Here's what I mean:
+X = a random 4 byte number 
+Y = a random 4 byte number (different from X)
+
+PID = [First 2 bytes of X][Last 2 bytes of Y]
+
+so if X = 0xDE6C3B8F and Y = 0xCA9B23E1
+then PID = [DE6C][23E1], which says PID = 0xDE6C23E1.
+
+But how would you go about doing this? We would need to remove the last 2 bytes of X and the first 2 bytes of Y. Then we would need to combine them.
+Luckily, we know a few commands which can remove some bytes. They are lsl and lsr. While lsl and lsr work on a bit level, if we shift off enough bits
+it would be the same as shifting off bytes. Recall that a register has 4 bytes of data. We want to shift off 2 bytes worth. 2 bytes is the same as 16
+bits. 16 in hex is 0x10. So lsl r0, r0, #0x10 would shift off the first 2 bytes. But then we'd end up with something like "XXXX0000" because our last
+2 bytes were shifted up. So we need to shift back right by 0x10 to give us "0000XXXX". With this new knowledge in mind, try and write a routine to do this!
+Assume:
+1) r0 and r1 contain two different random values (so don't push)
+2) we want the first half of r0 and the last half of r1
+3) Put the result in r0 (bonus I don't expect you to do)
+
+Hint: Think of which direction you need to shift to get the first half or the second half. Remember to restore them back
+
+Solution: Before looking, try steps 1 to 2.
+[spoiler]
+[code]
+main:
+	push {lr}
+@get rid of last half of r1, because we want first half.
+@so we're shifting right first, then left
+	lsr r0, r0, #0x10
+	lsl r0, r0, #0x10
+@get rid of first half of r1, because we want last half
+@so we're shifting left first, then right
+	lsl r1, r1, #0x10
+	lsr r1, r1, #0x10
+@I'll explain this soon.
+	orr r0, r0, r1
+	pop {pc}
+[/code]
+[/spoiler]
+
+The shifting is very straight forward, so I won't be explaining that. Reread the other sections if you don't understand. 
+I'll explain the "orr". The best way to look at orr is to look at two arguments it would take side by side and see what it's going. Take:
+X = XXXX0000
+Y = 0000YYYY
+
+If I did "orr r0, x, y", then I'm putting into r0 whatever the result of orr x, y is. orr combines the two values in a strange way which is useful.
+It basically takes the first arguement (X in this case) and substituted any "0x0" digits in X with the corresponding digits in Y. So this would
+become "XXXXYYYY". Once you see how it works, it becomes kinda of obvious how it's doing what it is. If you've studied logic gates, this is the
+same as logical OR. Similarly there's an "and" and "xor operation too. You can read about their functionality online, as it would end up being
+a tutorial on what the OP codes are if I did so myself.
+
+
+[h2]End:[/h2]
+
+I think that once you've mastered this tutorial, you're probably well on your way to trying the intermediate ones. Before you go though, here's a 
+nice little challenge. 
+
+Random move buffer!:
+
+The scripting command "random" sets variable 0x800D to a random value between 0x0 and 0xFF. We will consider this value to be a random move ID.
+In the same script you will need to use the callasm command to go to your routine's address (don't forget to add 1). From there, make a routine 
+which reads the value in variable 0x800D. Navigate the move table to the index specified by random and, copy the corresponding move name into
+the RAM location 0x2021D18.
+
+Required info:
+1) The move table starts at 0x8247094
+2) Each index in the move table contains a move name
+3) Each index in the move table is 13 bytes long (0xD in hex)
+4) Each move name is 0xFF terminated to signify the end of the name
+5) The RAM address of 0x800D is 0x20370D0
+
+Your script should look like this:
+[spoiler]
+[code]
+#dyn 0x740000
+#org @start
+lock
+faceplayer
+random 0xFF 
+callasm 0x[your routine address +1]
+storetext 0x0 0x2021D18 'bufferstring in xse
+msgbox @text
+callstd MSG_NORMAL
+release
+end
+
+#org @text
+= I love the move \v\h02! (this is [Buffer1] in XSE iirc)
+[/code]
+[/spoiler]
+
+Hints:
+There is a function which copies an 0xFF terminated string from 1 address to another. It can be used to copy the string in the table into 0x2021D18!
+This function is at 0x8008D84. Good luck! (Also with the knowledge from this tutorial, you can make your own string copy if you want. It's possible).

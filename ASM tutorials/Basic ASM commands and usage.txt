@@ -1,0 +1,274 @@
+[h1]ASM Guide for the Noobs[/h1]
+
+Most of my ASM tutorials have been pretty difficult in comparison to what's already been published on the tutorials section regarding the topic.
+So I've decided to make a rather simple tutorial, just covering super basically what you need to know before kick starting into your journey!
+
+Prerequisites: Try out HackMew and ShinyQuagsire's ASM tutorials. Also know how to compile and insert ASM. Look at the first post for these links.
+
+[h2]Commonly used thumb commands[/h2]
+
+Here's a breif look at some common commands to refresh your mind. For concepts like "what is a stack" I expect you to read the tutorials I've
+mentioned in the prerequisites section. Examples are separated by ";". Also some of these commands have signed versions, but I will not be 
+addressing those here. It requires some knowledge of technical implementation, and beginners don't need to know that just yet.
+
+[spoiler]
+[quote]
+push	- Pushes specified registers within braces into a stack
+	- Examples: push {r0-r6, lr} ; push {r0} ; push {r0, r3, r5, lr}
+
+pop	- Pops specified registers within a braces from a stack
+	- Examples: pop {r0-r6, lr} ; pop {r0} ; pop {r0, r3, r5, lr}
+	 
+add	- Adds the the values in two given registers or adds an immediate (0x0 to 0xFF limited) to a register. Result is in first listed register.
+	  Can only add two terms at a time. 
+	- Examples: add r0, r0, r1 ; add r0, r0, #0xFF ; add r0, r1, r3 ; add r0, r0, r0
+	 
+sub	- Subtracts the the values in two given registers or subtracts an immediate (0x0 to 0xFF limited) to a register. Result is in first listed
+	 register. Can only subtract two terms at a time. 
+	- Examples: sub r0, r0, r1 ; sub r0, r0, #0xFF ; sub r0, r1, r3 ; add r0, r0, r0
+	 
+mul	- Multiplies the values in two given registers. Cannot multiply immediates or immediates with registers. Result is in first listed register.
+	 Can only multiply two terms at a time.
+	- Examples: mul r1, r1, r2 ; mul r3, r2, r1 ; mul r1, r1, r1
+	 
+lsl	- Performs a bit shift left on a register. Can shift by an immediates (0x0 to 0xFF limited) or by value in register. Any shift over 0x20 is useless.
+	- Examples: lsl r0, r0, #0x13 ; lsl r0, r1, r3 ; lsl r0, r3, #0x3
+
+lsr	- Performs a bit shift right on a register. Can shift by an immediates (0x0 to 0xFF limited) or by value in register. Any shift over 0x20 is useless.
+	- Examples: lsr r0, r0, #0x13 ; lsr r0, r1, r3 ; lsr r0, r3, #0x3
+	 
+ldr	- Loads into a register a value of 4 bytes from the immediate or register source. Immediates are restricted to 0x0 to 0xFFFFFFFF.
+	- Note worthy: inside the closed brackets, you can perform addition by doing [register, immediate to add]
+	- Examples: ldr r0, [r1] ; ldr r0, =(0xFFFFFFFF) ; ldr r0, [r0, #0x4]
+	 
+ldrh	- Loads into a register a value of 2 bytes from the immediate or register source. Immediates are restricted to 0x0 to 0xFFFF.
+	- Note worthy: inside the closed brackets, you can perform addition by doing [register, immediate to add]
+	- Examples: ldrh r0, [r1] ; ldrh r0, =(0xFFFF) ; ldrh r0, [r0, #0x6] 
+
+ldrb	- Loads into a register a value of 1 byte from the immediate or register source. Immediates are restricted to 0x0 to 0xFF.
+	- Note worthy: inside the closed brackets, you can perform addition by doing [register, immediate to add]
+	- Examples: ldrb r0, [r1] ; ldr r0, =(0xFF) ; ldrb r0, [r0, #0x1]
+	 
+str	- Stores into an address based on register specified in closed brackets, 4 bytes of data from first register.
+	- Examples: str r0, [r1] ; str r0, [r3, #0x1]
+	 
+strh	- Stores into an address based on register specified in closed brackets, 2 bytes of data from first register.
+	- Examples: strh r0, [r1] ; strh r0, [r3, #0x2]
+	 
+strb	- Stores into an address based on register specified in closed brackets, 1 bytes of data from first register.
+	- Examples: strb r0, [r1] ; strb r0, [r3, #0x1]
+[/quote]
+[/spoiler]
+
+
+[h2]The task![/h2]
+
+Recall that the script command "random" sets variable 0x800D to a random number between 0x0 and 0xFF. Imagine that you're writing a script which 
+takes a random value via the random command and adds it to variable 0x8000. How would you do this in a script? The answer is we can't. Ultimately,
+we need a way to do "addvar 0x8000 0x800D" which adds the values of the two variables together and perhaps puts the result in 0x800D.
+Sadly, this scripting command doesn't exist. The only way to achieve such a mathamatical operation is to use ASM. Which is where we come in!!!
+Expanding the game while adding useful features is something you can do with ASM. I decided to make this specific tutorial on adding variables
+because I think it's practical and you can use it for other purposes outside of this tutorial.
+
+Make sure you have a compiler and notepad handy, we're going to write some code!
+
+
+[h2]Writing the routine[/h2]
+
+So lets start making our routine. The first thing we need is the routine's frame.
+[spoiler]
+[code]
+.text
+.align 2
+.thumb
+.thumb_func
+
+main:
+	@your code goes here
+
+.align 2
+[/code]
+
+Pretty much every routine will start with this frame. Actually, some of these starting and even the .align 2 at the end is unneeded. However, there
+are routines where you do need them, otherwise it won't compile or work. Luckily for us, if we add these extra lines, the compiler ignores them
+if they're not needed and applies them if they are. It's always a good idea to just include them anyways.
+From the base, we will be writing our routine where it says "@your code goes here".
+
+Our routine needs to do a couple of things:
+- Get the value of variable 0x8000
+- Get the value of variable 0x800D
+- Add them and put the sum in variable 0x800D
+
+There are some technical limitations. Variables are half-words only, meaning they are only 2 bytes long. So if you get the highest two byte number
+in variable 0x8000, then if you try to add to it and store a half word, it won't get the right value. Think of it like this. You brother only remembers
+numbers upto two digits. You tell him to remember what 99 + 5 is. While he can do the addition, he won't be able to remember the number. He'll only remember
+the first two digits. It's like that with the variables. For our starter tutorial, we can ignore this bug. It most likely won't occur for us.
+
+Before we can proceed we need to get the values of these variables 0x8000 and 0x800D. To do this, we need pointers to their data. If you don't know what
+a pointer is, then this aspect of ROM hacking is still beyond you. Pointers are addresses at which data is located. 
+The RAM addresses for variable 0x8000 is 0x20370B8. The RAM address for variable 0x800D is 0x20370D0.
+
+Lets update our routine.
+[code]
+.text
+.align 2
+.thumb
+.thumb_func
+
+main:
+	@push registers we use. Remember to push lr too.
+	push {r0-r1, lr}
+	
+	@set our registers to be the pointers of the variables
+	ldr r0, =(0x20370B8) @0x8000
+	ldr r1, =(0x20370D0) @0x800D
+	
+	@pop what you push, always.
+	pop {r0-r1, pc}
+
+.align 2
+[/code]
+
+ldr loads into it's register a 4 byte value from the target. Here our "targets" are the pointers themselves. So the registers now contain the pointers
+which point to the data we want. Now it's a question of accessing the data. Well actually, accessing the data is fairly simple. You just use another
+load register command. The one you use depends on how much data from the pointer you want to read. Here we know variables can only hold 2 bytes. 
+They are half-words, so we need to load a half word, i.e we use the command "ldrh". Lets update the code again to load half words from each of them.
+
+[code]
+.text
+.align 2
+.thumb
+.thumb_func
+
+main:
+	@push registers we use. Remember to push lr too.
+	push {r0-r1, lr}
+	
+	@set our registers to be the pointers of the variables
+	ldr r0, =(0x20370B8) @0x8000
+	ldr r1, =(0x20370D0) @0x800D
+	
+	@load halfwords from each pointer
+	ldrh r0, [r0]
+	ldrh r1, [r1]
+	
+	@pop what you push, always.
+	pop {r0-r1, pc}
+
+.align 2
+[/code]
+
+We've successfully loaded the values at the registers, now we need to add them together and put the result in 0x800D. Recall the "add" commands
+adds two registers together and puts the result in the first listed register (see commonly used ASM commands section). However, the add command
+doesn't let us store the result into a pointer. It will just store the sum in a register. After adding the two values together, we'll need to
+load up 0x800D and store it outselves. First lets do the addition.
+
+[code]
+.text
+.align 2
+.thumb
+.thumb_func
+
+main:
+	@push registers we use. Remember to push lr too.
+	push {r0-r1, lr}
+	
+	@set our registers to be the pointers of the variables
+	ldr r0, =(0x20370B8) @0x8000
+	ldr r1, =(0x20370D0) @0x800D
+	
+	@load halfwords from each pointer
+	ldrh r0, [r0]
+	ldrh r1, [r1]
+	
+	@add values and store result in r0.
+	add r0, r0, r1
+	
+	@pop what you push, always.
+	pop {r0-r1, pc}
+
+.align 2
+[/code]
+
+Well we've got the value, but now we need to store them in the memory address 0x20370D0 (var 0x800D). We obviously need to load it again because
+we lost the address by doing ldrh r0, [r0]. r0 had the address, but we loaded into it the value at that address, so it no longer does. This
+isn't a problem, we can just load the address again, but we put into r0 our sum of the values and don't want to overwrite that. To avoid this
+problem we can just use r1 to load the address of variable 0x800D!
+
+[code]
+.text
+.align 2
+.thumb
+.thumb_func
+
+main:
+	@push registers we use. Remember to push lr too.
+	push {r0-r1, lr}
+	
+	@set our registers to be the pointers of the variables
+	ldr r0, =(0x20370B8) @0x8000
+	ldr r1, =(0x20370D0) @0x800D
+	
+	@load halfwords from each pointer
+	ldrh r0, [r0]
+	ldrh r1, [r1]
+	
+	@add values and store result in r0.
+	add r0, r0, r1
+	
+	@set register r1 to variable address and store into our sum (in r0)
+	ldr r1, =(0x20370D0)
+	strh r0, [r1]
+	
+	@pop what you push, always.
+	pop {r0-r1, pc}
+
+.align 2
+[/code]
+
+OK. I snuck in an "strh" command. If you read the commonly used ASM commands section, you'll notice that strh stores a half word of the register
+provided into the address of the register in square brackets. So essentially we're storing a half word in r0 (our sum) at the address in r1.
+That is basically saying, we're storing our sum in the address 0x20370D0 (which is the last result). We're done!
+
+[/spoiler]
+
+
+[h2]Testing the routine[/h2]
+
+Well, I know it works because I made it, but it's possible you might want to test this routine out. This routine was made for the purpose of
+performing operations inside scripts (it can work outside scripts as well, but that's for another tutorial), so we can use the "callasm" command to test.
+
+Anyways, compile the routine we made and insert it into your ROM. If you don't know how. Refer to the first post.
+Try this script ingame and see if it works! Remember to update that "callasm" line according to what I've written there.
+[code]
+#dyn 0x740000
+#org @start
+'---------------------------------------------
+'recall random stores it's result in 0x800D
+'storevar is buffernumber in XSE
+'---------------------------------------------
+lock
+faceplayer
+random 0xFF
+setvar 0x8000 0x34
+storevar 0x1 0x8000
+storevar 0x0 0x800D
+msgbox @watchMeAdd
+callstd MSG_NORMAL
+callasm 0xWhere you inserted your routine + 1
+storevar 0x0 0x800D
+msgbox @result
+callstd MSG_NORMAL
+release
+end
+
+#org @watchMeAdd
+= I'm smart I can add uhhh[.]\n\v\h02 and \v\h03! Give me a sec!
+
+#org @result
+= It's \v\h02! Ha I told you!
+
+[/code] 
+
+
+

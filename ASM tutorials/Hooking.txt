@@ -1,0 +1,570 @@
+[h1]"Hooking" from existing routines[/h1]
+
+Hooking is a term Touched used to refer inserting your own branch from an existing routine to your routine. I'm not sure if the term has got other significant meanings in the programming world, but
+that's where I heard it from. Anyways this word has sort of grown on me, and I find myself using it to describe the aforementioned situation. Anyways, like the previous tutorial, this one requires for you to have already gotten the basics down. The difficulty will be around the same as the last tutorial, it should be much shorter, though I'll be introducing a few new concepts.
+
+For this guide you will need:
+- IDA 6.5 & Knizz's Database or the VBA emulator 
+- Hex Editor (just to search for hex strings)
+- VBA-SDL-H or similar Disassembler (btw VBA-SDL-H is linked in HackMew's tutorial. I don't have permission to use his link, so go and get it there)
+
+
+[b]Tutorial goal:[b]
+As you may know, there's a limit on how long item names can be. An item is only allowed to be 14 characters, actually if you consider the 0xFF string terminator, this 14 becomes 13 usable characters. So our goal is to figure out a way to remove this limit and have the string be any length.
+
+
+[h2]Developing an algorithm[/h2]
+
+Before we get started, it's important to first figure out if this is feasible. Items, like trainers, are stored in a table. The details on said table can be found [url=bulbapedia link]here[/url]. Well, this time we were thrown a bone because there's actually some documentation on the item table, and quite the useful amount as well. However, it should be duely noted, that even if this documentation didn't
+exist, one would only need to look up the item's name in hex + 0xFF to figure out where the item table's location is going to be. It's important that you use the 0xFF terminater when looking it up because its more than likely that the item's name pop's up in regular script text (via NPC saying something like "POTIONS are useful in long travels."). 
+
+Getting back on topic, this table has only allotted 14 bytes for the item names. If we were to make an item with a lengthier name we'd be overwritting the next field. In fact the lengthier the name the more it would overwrite. So how would we even have longer item names? Well, the trick is to use pointers. What if instead, if the item was larger than 14 characters, we would have a pointer to it's name rather than the actual name? That way we wouldn't need to edit every previous entry and it would be pretty easy to manage the table. This method also allows the ROM's item's the still be 
+able to get edited in tools (except for the name field of the longer named items we'd be adding in).
+
+Before continueing, there's one more thing that needs to be sorted out. The item table is 44 bytes long, which is divisible by four so the starting offset of each item's name is word aligned. This becomes important later on. The second thing we need to work on is knowing when to read a pointer and when to just use the original text. I suggest you develop an algorithm to solve this 
+problem yourself before clicking on the spoiler to get my solution.
+[spoiler] Well, since names are 0xFF terminated, 0xFFcannot be contained in the string name. So we can just read the first byte, if it's 0xFF then we will read a pointer else we read as per normal.[/spoiler]
+
+In pseudo code here's our algorithm:
+[code]
+...
+original code outputs string pointer for game to read
+...
+take string pointer
+read first byte of string
+if 0xFF:
+    read a pointer
+else:
+   continue
+....
+[/code]
+Of course, we can't just add our code in there without overwriting existing (and valueble) data. So this is where the concept of hooking safely, and restoration of erased data comes into play.
+
+
+[h2]Finding where to hook from[/h2]
+
+A large amount of ASM hacking comes form trying to find where you need to hook from. This is very similar to the previous tutorial in which we had to find where the trainer's name was being read from (hense why I picked this for tutorial #2), though luckily for us, this time it's much less of a hassle, since the coding around this area is much better :P
+
+First open up your ROM a Hex editor (and pick your favorite item). CTRL + F the hex name of your item + the 0xFF suffix. I will be using a burn heal, so I'm going to do "BCCFCCC800C2BFBBC6[b]FF[/b]". If you're unsure how to convert ASCII -> Hex look at my first tutorial for my python program + table file (or just the table file is fine). The conversion once you have that table file is quite straight forward. Please for the love of god and all things holy don't use an ASCII -> Hex converter from the internet. Unfortunately the translation between the two aren't standardized well at all.
+
+Once you've found the offset to the start of your item's name, take note of it. Mine was burn heal which ended up having it's string located at 0x3DB2BC. OK from now on, when I refer to offsets I will
+use the 08 prefix in substitute for 0x which means it's in the ROM and 02 prefix to signify it's in RAM. So this burn heal offset would be 083DB2BC in our new notation.
+[img]pic1[/img]
+
+As you can see this is a string which says "BURN HEAL" then ends in 0xFF. The rest of the name space is padded with 00s, though it can be padded with anything because generally when strings are read they're read using a while loop, like this:
+[code]
+while (last byte != 0xFF)
+    copy this byte
+[/code]
+
+I suggest you just make an NPC give the player the item in his room or something, then have a save state to that part of the game (because we'll need to get here many more times).
+Open VBA-SDL-H, and run your game. Make sure to get your item of choice. After you've recieved the item, you'll need to set a break point.
+
+Set a break point at the start of the item's name for 14 bytes (or the item's name's length, doesn't matter). Unlike our regular bt [offset] break points we've been doing, this one is a little different. bt stands for break thumb, but here we just want to break to see when this text string is going to start being read. The text string isn't in thumb, it's in hex, so with "bt" the game isn't going to break. What you need to do is set a break upon read. This will break once the game starts reading data from that offset.
+
+If you're using VBA-SDL-H the syntax of that is as follows:
+bpr [offset] [length]
+
+So for my Burn heal, that'll be, "bpr 083DB2BC 14"
+
+Once you've done that, press "c + Enter" to continue running the game. Open the bag (in game) and locate your item. The game should break at this point.
+
+[img]pic2[/img]
+[img]pic3[/img]
+
+Look at the underlined offset of the second picture. As you know, this is the previously executed command. It's loading into r2 a byte from r1, and from the circled blue part, we see that the value of r1 was 083DB2BC. By the way, did I mention 083DB2BC is the offset to the start of the string for "Burn Heal"? :P
+
+OK, we've got a ROM address, time to break out our VBA emulater's niffy disassembler (or IDA, IDA is way better). Make sure you don't forget to open your ROM in it first though. 
+Once you've got VBA's disassembler opened (tools -> disassemble), in the Go box we're going to write the address of that ldrb r2, [r1, #0x0] command, which was 08008D90.
+
+[img]pic4[/img]
+
+We're going to folllow the same ritual we did last time. Keep on scrolling up until we find a push statement which pushes atleast the link register.
+
+A few scrolls later we've found the start of this function!
+
+[img]pic5[/img]
+
+Let's see what this function is actually doing...
+
+[code]
+
+MAIN:                                  
+ROM:08008D84                 PUSH    {LR}
+ROM:08008D86                 MOV    R3, R0
+ROM:08008D88                 B       SECTION @label instead of offset for readability
+
+SECTION2:
+ROM:08008D8A                 STRB    R2, [R3]
+ROM:08008D8C                 ADDS    R3, #1
+ROM:08008D8E                 ADDS    R1, #1
+
+SECTION:
+ROM:08008D90                 LDRB    R2, [R1]
+ROM:08008D92                 MOV    R0, R2
+ROM:08008D94                 CMP     R0, #0xFF
+ROM:08008D96                 BNE     SECTION2   @I put a label here so it's easier to read
+ROM:08008D98                 MOV    R0, #0xFF
+ROM:08008D9A                 STRB    R0, [R3]
+ROM:08008D9C                 MOV    R0, R3
+ROM:08008D9E                 POP     {R1}
+ROM:08008DA0                 BX      R1
+[/code]
+
+It's good practice to look at the code and try make sense of what it's trying to do. I suggest that you look at it long and hard and try come up with some pseudo code for what this is trying to accomplish. Once you've done that, look at my solution (in the spoiler tag).
+
+[spoiler]
+[code]
+while (Byte from r1 != 0xFF):
+      store byte in r0
+      r1 = r1 + 1
+      r0 = r0 + 1
+store byte 0xFF in r0
+[/code]
+[/spoiler]
+
+As you can probably tell from my pseudo code, this is a function that copies an 0xFF terminated string from from r1 into a destination defined by r0. For some reason GameFreak's code is both r2 and r3 as well, which is inefficient, but in the end it gets the job done.
+
+In other words, we've found the game's string copy function. Remember the freebie function I didn't use from last time? Well this is it :P
+Now that we know how the function works, we can see that r0 contains the detination for the string and r1 contains the pointer to the string. I.e, r0 = destination, r1 = source. 
+
+Remember, r1 at this point contained the pointer to Burn Heal's name. That implies that before this function is even called the pointer to Burn Heal's name was already found. So we need to find the function that calls this string copying function.
+Can you guess how we're going to find out where this string copy function is being called from? If you guessed that we're going to set a break point to the start of this function (08008D84) then you're right.
+
+In VBA-SDL-H, type in "bprc" to clear all break up read points set up. We wouldn't want it interrupting us. After removing the break point, close the bag and hit F11 again to enter the debugger mode. We want to put our break point to string copy now.
+
+Since this is a thumb function/instruction, we can do "bt 08008D84".
+After doing that, "c + ENTER" to continue playing the game. Open you bag and navigate to the pocket your item is in, the game should break.
+
+Now here's the important part. We've discovered the game's string copy function. There is no doubt that this function will be called for all or most strings read directly from ROM into RAM (possibly even RAM to RAM). This means that it may break multiple times for different strings, not just our "BURN HEAL".
+
+But FBI, how will we know when it's finally on our item. Easy. Remember that R1 contains the pointer to the source string. In my case, burn heal's string is located at 083DB2BC. I will hit c + ENTER until I see that R1 is 083DB2BC. Depending on how many items are in your bag, this may take you a few, for me it takes 2 c + ENTER cycles because burn heal is the only item in my bag (the other string, if you're curious, is "CANCEL").
+
+[img]pic6[/img]
+
+So you see that the first break for me was on a pointer to 08452F60, which is definitely not burn heal. The second one (underlined in red) was a success! Now we want to find which function called on the str copy function for the success case, so we will look at the previously ran instruction (underlined in pink) in the above picture.
+
+We've run into a problem, the previously ran instruction is "blh $0fcc" which is not the right instruction we're looking for! If you recall from last time, I said that this is actually a branch with link instruction whose first two byte haven't been interpreted by the debugger. So the real instruction is at "08008DB6" minus 2, i.e 08008DB4.
+
+Jump back to the VBA emulater's disassembler and jump go to 08008DB4. Scroll up until you can see the whole function. Here we'll find a rather small function which calls our string copy function.
+
+[code]
+ROM:08008DA4                 PUSH    {LR}
+ROM:08008DA6                 MOV    R2, R0
+ROM:08008DA8                 B      08008DAC
+ROM:08008DAA                 ADDS    R2, #1
+ROM:08008DAC                 LDRB    R0, [R2]
+ROM:08008DAE                 CMP     R0, #0xFF
+ROM:08008DB0                 BNE     08008DAA
+ROM:08008DB2                 MOV    R0, R2
+ROM:08008DB4                 BL      08008D84 <-- str copy function we found is called here
+ROM:08008DB8                 POP     {R1}
+[/code]
+
+Try on your own to make sense of what's going on here. Try to develop some pseudo code to match, then look at my solution.
+[spoiler]
+r0 = string pointer
+r1 = string pointer
+while (Read byte at r0 != 0xFF)
+	increment pointer(r0) by 1
+str_copy (pointer to 0xFF byte in string r0 as destination, r1 as source)
+[/spoiler]
+
+This is also just another while loop, but what it does is a little different. It reads an 0xFF terminated string, and finds the end. It then feeds a pointer to the end of that string (where the 0xFF is) to our string copy function as the destination. So basically, this function is concatenating two 0xFF terminated strings into one string. For example, it takes "play" and another string "ground" and turns it into "playground". A pretty neat function. It would probably mainly be used to attach a color label to strings. Like you've seen in scripting, you can add colors to strings by adding special characters to the start of the string.
+
+Through my explanation of the function, surely you must've noticed. When str_copy (I'm going to use that name when refering to the string copy function) was called at the time of back tracking, it had r1 as the source string, "BURN HEAL" already. This small str_cat (short for string concatinator function) also doesn't modify r1 in anyway. So it's obvious then that our burn heal's string pointer was derrived before the calling of this function. This means we have to back track a little further...
+
+Again, delete all break points you might have (using "bprc" and "bd 0") in VBA-SDL-H. We're going to set a new break point at the start of the str_cat function (08008DA4). Make sure that before you set this break point, you've already obtained the item and it's in your bag.
+
+Set the break point and try to view your item in your bag again. If you break before seeing your item (quite likely), then take a look at r1. If r1 isn't the pointer to your item's string pointer then it's safe to skip. Skip using c + Enter, as mentioned before.
+
+[img]pic8[/img]
+
+Once you get the right break, take a look at the previously executed command again. It's "blh $080a", but this time we know how to deal with that! Since this seemingly odd command happens at 08108598, then bl must've been 2 bytes prior.
+Open up VBA's disassembler and go to 08108596.
+
+We've found ourselves in a pretty big function, comparatively speaking.
+
+[img]pic9[/img]
+
+[code]
+ROM:08108560                 PUSH    {R4,R5,LR}
+ROM:08108562                 MOV    R4, R0
+ROM:08108564                 LSL    R1, R1, #0x10
+ROM:08108566                 LSR    R5, R1, #0x10
+ROM:08108568                 LDR     R0, =0xFE940000
+ROM:0810856A                 ADDS    R1, R1, R0
+ROM:0810856C                 LSR    R1, R1, #0x10
+ROM:0810856E                 CMP     R1, #1
+ROM:08108570                 BHI     SECTION
+
+ROM:08108572                 LDR     R1, =a489
+ROM:08108574                 MOV    R0, R4
+ROM:08108576                 BL      08008D84 <---- STRING COPY FUNCTION
+ROM:0810857A                 B       0810858C
+
+-----------------------	         Some pointer data here
+
+SECTION:
+ROM:08108584                 LDR     R1, =a423
+ROM:08108586                 MOV    R0, R4  
+ROM:08108588                 BL      08008D84 <---- STRING COPY FUNCTION
+ROM:0810858C                 MOV    R0, R5
+ROM:0810858E                 BL      0809A8BC <---- UNKNOWN FUNCTION
+ROM:08108592                 MOV    R1, R0
+ROM:08108594                 MOV    R0, R4
+ROM:08108596                 BL      08008DA4 <-------HERE'S WHERE OUR BREAK HAPPENED (STR CONCATENATE)
+ROM:0810859A                 POP     {R4,R5}
+ROM:0810859C                 POP     {R0}
+ROM:0810859E                 BX      R0
+[/code]
+
+Alright, just from intuition, by looking at this function I can tell you that the function at 0810858E is the one which does the retrieving to the pointer to the string "BURN HEAL". While that may seem like a big jump in logic and rather rash without examining the rest of the function, I assure you that this is 100% the case. Here's the reasoning:
+
+Remember when I was talking about paramaters to ASM functions? I said that paramaters, by ASM standards, are defined to be the first four low registers. If there are more than four paramaters, that's a different story (the extra paramaters are writting to the stack pointer). Similarly to paramaters, the output from a function is also like this. Generally, if a function outputs values or pointers for other functions to use (these are often called helper functions in other programming languages), the outputs are stored into r0-r3. They are always filled in consecutive order. So if some function outputted one value, that value would be in r0. Never will you see the value in r1, r2, or r3 and not in r0. Hopefully that makes sense to you, as it's important. 
+
+As you can see near the bottom I've marked in caps where we broke from in our VBA-SDL-H session. That function we broke from is then the str_cat function, which if you remember takes in r0 and destination and in r1 a source. The source is obviously a pointer to your item's name. But if you look a couple lines up you'll see "mov r1, r0" right after the "bl" to our unknown function. What this implies is that this unknown function outputted the pointer to Burn heal's string. If you don't believe me, set a break point before at after the unknown function (so at 0810858C and 08108592) and check the value in R1. In the case that I'm right, you'll notice that r1 will contain the pointer to you item's string after and not before.
+Remember this concept, as it's quite useful and it WILL save you a large chunk of work.
+
+
+[h2]Studying our Hook location[/h2]
+
+So we've found the function which seems to output our item's string pointer at 0809A8BC. We also don't know anything about this function in general. It's a good idea to first look at what it does in an attempt to try and understand it before we dive into where to place the hook and how.
+
+Open 0809A8BC in you VBA emulater's disassembler and observe the coding. Here's what is looks like.
+
+[code]
+Paramaters = ??? (it's a mystery right now)
+
+main:
+	push {lr}
+	lsl r0, r0, #0x10
+	lsr r0, r0, #0x10
+	bl 0x809A8A4
+	lsl r0, r0, #0x10
+	lsr r0, r0, #0x10
+	mov r1, #0x2C
+	mul r0, r0, r1
+	ldr r1, =(0x83DB028) @This is obviously the item table
+	add r0, r0, r1
+	pop {r1}
+	bx r1
+
+output = Pointer to Item's string location
+[/code]
+
+Before we treck further lets try and find out that the paramaters are for this item function. Clear all your break points by typing in "bd x" where x is the number of your break point (generally you can spam bd 0 until all your break points are removed). Typing in "bl" in the debugger for VBA-SDL-H will show you a list of break points and their respective break point IDs.
+
+OK, type in "bt 0809A8A4" to set a break point at the start of the function. By the time we reach the function, obviously r0, r1, r2, and r3 will already have their values set. Remember, even though these four registers are used for function paramaters, it's not required for a function to use all 4. In this case it's hard to determine because the 4th line of this function calls another function via "bl 0x809A8A4" which may use the other register values. Anyways, for now, lets look at the register states. Play the game and look at your item in the bag. It should break. 
+
+[img]pic 10[/img]
+
+Observe the image. The game reached the break point and the values in registers r0-r3 are as follows:
+[code]
+r0 = 0000000F
+r1 = 081086CD
+r2 = 00000F20
+r3 = 08108655
+[/code]
+
+So r1 contains a pointer to something, r2 contains something unknown, and r3 also contains a pointer to something. Doing a little bit of poking around, you'll notice that these pointers actually lead to no data, just the middle of some ASM routines. Whether they're used or not still depends on that other function call out function is doing. The important thing is that value in r0, it's 0xF...Burn heal's Item ID is 0xF...coincidence? Lets try with another item, see what we get.
+[spoiler]
+r0 always contains that item's Item ID!
+[/spoiler]
+
+Going back to the code, lets look at the begining of it.
+[code]
+	push {lr}
+	lsl r0, r0, #0x10
+	lsr r0, r0, #0x10
+	bl 0x809A8A4
+	lsl r0, r0, #0x10
+	lsr r0, r0, #0x10
+[/code]
+You may notice the lsl r0, r0, #0x10 and lsr r0, r0, #0x10. First of all 0x10 in decimal is 16, so the shifts are 16 bit shifts. One byte is 8 bits.Then these "odd" lines of code are actually shifting off the first two bytes of the register, and keeping the last two. If you recall registers hold 4 bytes. I.e the lsl and lsr commands are being used here to require that r0's value is a half word. Before we can study further, we need to take a quick peek at what this "bl 0x809A8A4" is doing. Use VBA's disassembler to retrieve the code at this location.
+
+Here's what it looks like:
+[code]
+main:
+	push {lr}
+	lsl r0, r0, #0x10
+	lsr r1, r0, #0x10
+	mov r0, #0xBB
+	lsl 0, r0, #0x1
+	cmp r1, r0
+	bhi return_zero
+	add r0, r1, #0x0
+	b end
+
+return_zero:
+	mov r0, #0x0
+end:
+	pop {r1}
+	bx r1
+[/code]
+
+Alright, I should take this time to explain the other use of lsl and lsr. Both of these commands are bit shifts as you know. It just so happens that shifting a number 1 bit to the left is the same as multiplying that number by two. I.e lsl r0, r0, #0x1 when r0 has a value of 5, will give r0 a value of 10 (which is 5 * 2). lsl r0, r0, #0x2, would be the same as, r0 = r0 * 2 * 2. Yup it's exponential. lsr is similar, but it's the exact opposite of lsl. lsr is a division by powers of two. 
+For example is r0 contained 16 and we did lsr r0, r0, #0x3, then r0 = 16 / (2 * 2 * 2), so 16/8 which is 2.
+
+Going back to the code, we have:
+[code]
+	lsl r0, r0, #0x10   @shift 2 bytes to the left
+	lsr r1, r0, #0x10  @shift 2 bytes to the right, effectively erasing the first 2 bytes
+	mov r0, #0xBB    
+	lsl r0, r0, #0x1     @ r0 = 0xBB, so shifting 1 bit left would be 0xBB * 2, which is 0x176
+[/code]
+
+^ Take notice that r1 now contains the item ID, and r0 contains 0x176. Lets look at the rest.
+
+[code]
+	cmp r1, r0
+	bhi return_zero
+	add r0, r1, #0x0
+	b end
+
+return_zero:
+	mov r0, #0x0
+end:
+	pop {r1}
+	bx r1
+[/code]
+Cool, obviously enough this checks if the Item ID is higher than 0x176 (the highest Item ID in Fire Red by default) and if it is, sets r0 to zero (which is considered the "empty" item since no item has item ID 0x0), otherwise r0 is set back to it's old item ID. So why couldn't the code just have done that in the original function instead of branching off to this one? Well the chances are that the item needs to be checked very often to make sure it's a real item, so this function was made as a helper function to avoid repeated code. BTW, if you wanted to expand items, we've found the limiter right here :P
+
+Anyways, continueing on, we notice that this helper function doesn't use r1, r2, or r3, only r0. So that means tthe paramater for our original function must've only needed R0, the Item ID.
+
+Lets go back to it and comment what we can!
+[code]
+Paramaters - r0 = Item ID
+
+main:
+	push {lr}
+	lsl r0, r0, #0x10 @Make sure Item ID is 2 bytes, i.e R0 is a half word
+	lsr r0, r0, #0x10
+	bl 0x809A8A4   @Make sure Item ID is valid
+	lsl r0, r0, #0x10  @Make sure Item ID is a half word after comming out of validity check
+	lsr r0, r0, #0x10
+	mov r1, #0x2C    
+	mul r0, r0, r1      @multiply Item ID * 0x2C
+	ldr r1, =(0x83DB028) @This is obviously the item table
+	add r0, r0, r1     @Item string location = Item ID * 0x2C + 0x83DB028
+	pop {r1}
+	bx r1
+
+output = Pointer to Item's string location
+[/code]
+
+Awesome. We now fully understand what our "fetch Item name by ID" function is doing. We're read to start hooking.
+
+
+[h2]Doing the hook[/h2]
+
+OK, before we start making the hook, it's important to first note that hooking from a function takes 8 bytes. There's only 1 real way to hook, and a few hacky looking ways (which also work). Here' they are:
+
+Method 1 (the way I do it):
+[code]
+ldr rX, =(Location to hook to)
+bx rX
+[/code]
+
+Method 2 (the way some people do it):
+[code]
+ldr rX, = (Location to hook to)
+mov pc, rX
+[/code]
+
+The first way uses an unrestricted branch to an address you've specified in rX (where rX is some register, higher numbered registers don't work with this, you can say ldr r13 for example, but R7 would work). The second way is to make the program counter directly. While I'm not sure which one is more standard/better, I learned the first way first, so that's the one I stick with :D
+
+Note that each instruction takes 2 bytes, so with both versions contains 2 lines that means it takes 4 bytes, right? Nope. The pointer by itself takes 4 bytes. So it actually takes 8 bytes in total, 4 bytes for the instructions and 4 bytes for the pointer. Why does this matter? Because we're going to be overwritting 8 bytes of code from the function we're hooking from inorder to call our snipplet of code.
+
+Remember our algorithm we came up with at the start of the tutorial.
+[quote]
+Well, since names are 0xFF terminated, 0xFFcannot be contained in the string name. 
+So we can just read the first byte, if it's 0xFF then we will read a pointer else we read as per normal.
+[/quote]
+
+Well we know right before the funciton returns that it contains the pointer to the normal string. We want to read a byte of it, so our hook will need to be at the end of the function. However, we have to keep our hook INSIDE this function, otherwise we'll overwrite other functions and that would be bad. There's actually two more complications. The first is that the hook needs to start at a word aligned offset. So normally the hook would only overwrite the last four lines of code.
+[code]
+ROM:0809A8CE                 LDR     R1, =0x83DB028
+ROM:0809A8D0                 ADD    R0, R0, R1
+ROM:0809A8D2                 POP     {R1}
+ROM:0809A8D4                 BX      R1
+[/code]
+But notice that these last 4 lines of code don't start at a word aligned offset, that is to say that 0809A8CE isn't divisible by 4. If it were, it'd end in either a "0, 4, 8, C,", but this obviously ends in an "E". So the simple solution is to start overwriting 1 line before this one, since the line: "mul r0, r0, r1" starts at 0809A8CC which IS a word aligned offset. 
+
+Now the second is that we need to pick a safe register to use for the hook. Remember we need to load into rX the pointer to where our custom routine will be, at the same time we don't want to overwrite an important register. In this case r0 contains the item ID and r1 contains 0x2C which is part of the formula to derive the location of the pointer to the string. But what about r2? r2 isn't used anywhere! On top of that r2 is considered a paramater and output register. So if this function takes only a paramater in r2, and doesn't return anything except the pointer to the string in r0, then r2 is safe for us to use.
+
+So our "hook" is actually another, small ASM routine which is simply:
+[code]
+.text
+.align 2
+.thumb
+
+main:
+	ldr r2, =(0x8[where we plan to insert our snipplet] +1)
+	bx r2
+.align 2
+[/code]
+Obviously we can't compile this until we set a proper pointer for r2. Just find a good chunk of free ROM space and use that as your pointer for R2. Then compile this hook ASM to hex, and in your ROM at 0809A8CC overwrite the bytes with the compiled version of the hook. Very easy stuff indeed. After you know the limitations of placing hooks and how, hooking becomes a very easy and very useful tool to have in your ASM tool box.
+
+Now it's time to write our actual custom routine snipplet. But remember we overwrote the last 5 lines of the original function inorder to place our hook.
+
+This means, that somewhere along the road we need to have these 4 lines of code in our routine snipplet. In this case,  we wanted our snipplet to be executed AFTER the pointer to the string was derived because we want to read a byte from that pointer and check if it's 0xFF. So the start of our routine is simply going to be these lines. Actually not quite. The lines pop {r1} and bx r1 are like the "pop {pc}" command we know, which signified the end of the routine. So we only need to write the first 3. Lets write it out.
+
+[b]Writing the ASM[/b]
+[code]
+.text
+.align 2
+.thumb
+
+main:
+	@here we have the old code we overwrote to place the hook
+	@we omit the pop part because we don't want the routine to end just yet
+	mul r0, r0, r1
+	ldr r1, =(0x83DB028)
+	add r0, r0, r1 @r0 contains the string pointer right now
+.align 2
+[/code]
+
+First of all, you'll notice that I didn't push anything! That's because we don't plan on overwritting anything important. For this task, I'm estimating that registers r0-r3 are more than enough. Remember that r0-r3 are EXPECTED to be overwritten in a function. If by chance I were to need more registers, say I needed r4, r5 and r6, then I would push ONLY r4-r6. 
+
+OK, we've got the string pointer in r0 right now. We need to read a byte from it and check if the byte is 0xFF. If the byte isn't 0xFF then we will do nothing and just return the original pointer. If it is indeed 0xFF then we want to read a pointer. Try and figure out how to do this part yourself first. Once you've got a solution, feel free to read ahead and see mine.
+
+[code]
+[code]
+.text
+.align 2
+.thumb
+
+main:
+	@here we have the old code we overwrote to place the hook
+	@we omit the pop part because we don't want the routine to end just yet
+	mul r0, r0, r1
+	ldr r1, =(0x83DB028)
+	add r0, r0, r1 @r0 contains the pointer right now
+
+	@now for our algorithm we need to read a byte from r0 and check if it's 0xFF
+	ldrb r1, [r0]
+	cmp r1, #0xFF
+	bne end @if it's not 0xFF we just use the original pointer, i.e end and do nothing
+
+readPointer:
+	@here the bne failed to go to end, that means the first byte was 0xFF
+	@so we need to read a pointer...
+	-some code that reads a pointer-
+
+end:
+	@we could alternatively use pop {pc}, but I decided to use what the game uses
+	@just to demonstrate the importance of preserving the code you overwrite
+	pop {r1}
+	bx r1
+
+.align 2
+[/code]
+
+Read the comments in the code to understand what I've done. You'll notice that I haven't written the readPointer code yet. The code that reads the actual pointer. That's because we will need to use the "ldr" command to read a pointer. Remember that ldr loads 4 bytes of data into a register, a pointer is 4 bytes. Remember also, that ldr requires an offset to be word aligned. Lets do a small recap of the start of this tutorial for a second, particularly this part:
+[quote]
+Before continueing, there's one more thing that needs to be sorted out. The item table is 44 bytes long, which is divisible by four so the starting offset of each item's name is word aligned. This becomes important later on.
+[/quote]
+Wow, so if the start of an item's string is word aligned that means normally we'd be able to read 4 bytes using ldr without a problem. However, the first byte was a flag byte, which we used 0xFF for. That means it looks like this:
+[code]
+0 : 0xFF
+1 : XX
+2 : XX
+3 : XX
+4 : XX
+[/code]
+Where the XXs are bytes which combine to form a pointer. You'll notice that the pointer doesn't start at a word aligned offset. So what do we have to do?
+
+Well, quite luckily for us, the item name is 14 bytes long. 0xFF and a pointer (4 bytes) together will only take up 5 bytes total. What if we had some padding bytes for the first 3 bytes after the 0xFF? Something like this:
+[code]
+0 : 0xFF
+1:  0x00
+2:  0x00
+3:  0x00
+4:  XX
+5:  XX
+6:  XX
+7:  XX
+[/code]
+Clearly now, the pointer starts at a word aligned offset! The offset of the pointer would then be the pointer to the 0xFF byte, plus 4.
+
+Lets write that out.
+
+[code]
+.text
+.align 2
+.thumb
+
+main:
+	@here we have the old code we overwrote to place the hook
+	@we omit the pop part because we don't want the routine to end just yet
+	mul r0, r0, r1
+	ldr r1, =(0x83DB028)
+	add r0, r0, r1 @r0 contains the pointer right now
+
+	@now for our algorithm we need to read a byte from r0 and check if it's 0xFF
+	ldrb r1, [r0]
+	cmp r1, #0xFF
+	bne end @if it's not 0xFF we just use the original pointer, i.e end and do nothing
+
+readPointer:
+	@this part is ran when the bne fails, i.e the first byte is 0xFF
+	@if it's 0xFF, then we skip over 4 more bytes inclusive
+	ldr r0, [r0, #0x4]
+	
+end:
+	@we could alternatively use pop {pc}, but I decided to use what the game uses
+	@just to demonstrate the importance of preserving the code you overwrite
+	pop {r1}
+	bx r1
+
+.align 2
+[/code]
+
+Cool, we're actually done now. Except I have a few more notes to add.
+1) ldr r0, [rX] will read a reverse hex pointer at the offset pointer to by rX
+2) When branching to another routine using ldr rX = (0xsomething) ; bx rX. Make sure you add +1 to that 0xSomething. There's a reason behind it, which I'm not going to explain atm :D
+
+That's why you will see a lot of routine writers say something like, "make sure XX XX XX is a reverse hex pointer to this routine +1". It's because they're using ldr to load their routine's pointer (the four bytes). Also this implies that our pointer in the item table should also be in reverse hex, though we don't need to add + 1 because the pointer isn't a pointer to a routine.
+
+To end this tutorial, here's an uncommented version of the code:
+[code]
+.text
+.align 2
+.thumb
+
+main:
+	mul r0, r0, r1
+	ldr r1, =(0x83DB028)
+	add r0, r0, r1
+	ldrb r1, [r0]
+	cmp r1, #0xFF
+	bne end
+
+readPointer:
+	ldr r0, [r0, #0x4]
+	
+end:
+	pop {r1}
+	bx r1
+
+.align 2
+[/code]
+
+
+[h2]Challenges and some info[/h2]
+
+Alrighty, it's time for the next challenge :D
+
+Can you make it so Pokemon Names can be greater than 13 characters? We need a Fakemon named Mega SuperDuperCharizardous!
+
+The other thing I wanted to say in this section, was that if you have any questions regarding my tutorials specifically, or suggestions, please ask. If you have general ASM questions please ask them in the appropriate threads. While I don't particularly mind answering them here, I'm sure the staff and people browsing in the future would appretiate if everything was nicely sorted. Also if you have questions regarding ASM and no one seems to be online/helping or if you just want to chat, head over to our iirc at channel #GoGo. Yeah...GoGo named the channel after himself :P
+
+
+
+
+
+
+
+
+

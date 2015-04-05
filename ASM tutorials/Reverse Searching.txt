@@ -1,0 +1,682 @@
+[h2]Introduction[/h2]
+
+
+I've recently decided to write a guide/tutorial kinda thing on some ASM writing/research process. I should warn the reader that this guide requires some prior knowledge of ASM. If you haven't already I suggest you read HackMew's part 1 tutorial, JPAN's tutorial document on thumb, and ShinyQuagsire's guide to ASM. Once you've become confortable at writing your own routines(at a basic level), understanding this guide would be the next step on your adventure to conquering the ASM world.
+
+Anyways to complete this guide you'll want to get your hands on:
+
+- [s]legal[/s] copy of IDA 6.5
+- knizz's data base
+- some debugging tool (it just needs to have a search function for current RAM and ability to set break points. I'm going to be using VBA-SDL-H).
+
+To some degree you can substitute IDA for Visual Boy Advance's dissembler (but it's just not nearly as good). I won't be linking any of those things here because I'm a little lazy to find the links. But I will be using VBA's disassember here instead of IDA, because I know a lot of people won't be able to get their hands on a copy. Though if I ever do make further guides, or if you plan on writing some more difficult ASM, you NEED IDA. It's a pretty big advantage.
+
+
+[h2]Introducing the goal/task[/h2]
+
+
+In this guide we're going to be doing something rather simple-ish. I'll work my way up to harder examples in the future. Today we're going to be buffering some things into text. Specifically the name of the LAST trainer you've battled. This can be useful to some people if you're looking to have an NPC buffer the name of multiple trainers. Something like a referee at  some tournament event which says something like "/v/h01 has won the battle against /v/h02!" or something similar for each battle you do. Here the only alternative would be to use flags for each trainer. Using flags for each trainer is obviously not a good idea, even if you can do it with vars I still wouldn't (and you couldn't if you were real pro and made the battle order randomized). Anyways getting back on topic there's a few things we need to identify before continuing, and these things you'd need to identify throughout every routine you'll ever do.
+
+1) Has someone already written this? Is it open source?
+A) No one has written something like this as far as I know. (Except me, but I didn't released it because no one asked :D ).
+
+2) Do I have any clues as to how to do this?
+A) You don't need to have a clue at the start. But as you get more experienced and understand how these things work in general, this question becomes easier to answer.
+
+3) If I were to code it, how would I?
+A) Well there's a few ways. The best result would be if the trainer's name is written directly into some isolated portion of RAM during the start of the battle. If that's the case then all we need to do is recall it whenever we want. Chances are if that's how it works, at the end of the battle it's not wiped, rather it's just simply overwritten in a new battle. The second, and more likely way, it's done is probably a derivation. Most "properties" like trainer name, Pokemon name ect are derived from tables in the game. It's very likely that this is the case, but we'll see soon :P
+
+
+[h2]Confirming suspicions[/h2]
+
+Alright, boot up VBA-SDL-H and run a clean FireRed ROM through it. You can do this by dragging the FR ROM right into the 
+VBA-SDL-H.exe if you're on Window's or similar operating system. Otherwise use the shell/cmd/terminal. I'm not going to go through in detail how you do that, read HackMew's tutorial on ASM if you're not sure.
+
+Anyways, we want to get into a battle against a trainer. Once you see the trainer's name appear on screen pause the game and enter debugger mode (F11 in VBA-SDL-H). For me the trainer's name was JANICE.
+[img]pic1[/img]
+
+Our first guess was that the trainer's name in written somewhere in RAM. We need to convert this name into Hex before searching the RAM for it. If you have Python here's a [url="http://pastebin.com/raw.php?i=MZC9tvQq"]program you can run[/url] and here's the [url="http://pastebin.com/raw.php?i=mAGWrgKw"]table file[/url]. If you don't have Python, then you'll just have to manually use the table file to calculate your trainer's name. Note my python program asks for input (the first is the string, the second is "1" for ascii -> hex and anything else for hex -> ascii)
+
+So JANICE turned out to be C4BBC8C3BDBF. So we'll search the RAM for this value (fh in VBA-SDL-H). So what I enter to the debugger would be "fh 0 30 C4BBC8C3BDBF" Which means, start searching at 0 (start) for the next 30  occurrences of "C4BBC8C3BDBF". I'm not expecting 30 occurrences ofcourse, but we just want to see how often it's written into RAM.
+
+Here's the result so far:
+[img]pic2[/img]
+
+You'll notice that the first result is in RAM (02 prefix) and the next 3 results are all in the ROM (08) prefix. So all we need to do is check what this 02022991 address is and make sure it's not dynamic (doesn't change) and isn't overwritten. Firstly we'll check that the location of the name doesn't change. To do this you just simply re-run your ROM in the debugger and follow the steps we just did.
+[spoiler]
+It doesn't change.
+[/spoiler]
+So since we know it's not dynamic, we just need to check if it's overwritten or not. If it's not overwritten then we're pretty close to done. All we have to do is just copy some bytes in our routine to some area of RAM and set it as a buffer for our script.
+Type in "bpw 02022991 [size of the name]" Where [size of the name] is the length of the name of the trainer you're battling +1. So Janice is 6 letters + 1 is 7. The reason I'm adding 1 to her name's length is because strings are normally 0xFF terminated. Meaning the game interprets in 0xFF to signify the end of the string. Alternatively the 7th character may be a space (likely in this case, since Janice's name is used in a sentence here.)
+
+Type in "c" then press enter to continue playing the game.
+
+You'll notice the second you press the "A" button in game the debugger will break signifying that the address is being overwritten. But overwritten by what???
+
+Spam "c" + enter in the debugger window until the Pokemon is sent out animation comes in.
+
+
+Lets check out what it got overwritten by, type in "mb 02022991" that will show you the current state of the RAM at said address for some amount of bytes.
+Now if you convert that HEX into ASCII (you can do this with by program by typing anything but "1" into the prompt or manually by hand. Well, if you don't want to go through the trouble I'll just tell you. Janice's name is replaced by a new string, which is the current string which the game outputs into the battle box.
+Uh-oh, that means that we can't just use our easy method and "steal" the values.
+
+[img]pic3[/img]
+
+Alright, we're officially stuck. The game doesn't keep a record of the Trainer's name, and it derrives it from scratch somewhere we don't know about.
+
+We have two options:
+1) Search long and hard for the function which get's the trainer's name, and see if it's usable (100% probably not reusable, I know because it's probably done in a function body of a case/switch statement which also does other things.)
+2) Use our brains and try and find the table then work backwards.
+
+I don't know about you, but I like using my brain and working backwards. Well without further ado lets get chopping. The trainer names are 100% stored in a table somewhere with the rest of the trainer's properties such as name, music, money multiplier, class. I know this because there are simple tools to edit trainers out there.
+Well open up a trainer editor and edit the names of the first two trainers (trainer flag 0x1 and trainer flag 0x2) to something we can easily search in a hex editor. Make sure these two names don't conflict with any existing names to avoid confusion. I'm going to name my guys MARUS and COOLIOS. Both are unused names and rather random. (BTW, I'm using HackMew's A-trainer, you can use whatever program you want).
+
+[img]pic4[/img]
+
+Now convert the two names to HEX. So mine would be C7 BB CC CF CD and BD C9 C9 C6 C3 C9 CD. Note that these trainer's are consecutive. All I have to do now is search for these values in a hex editor. ANNNDDD BOOM! They're both there in our mysterious table of what seems to be random bytes and stuffs.
+Take note of the amount of bytes from the start of the first name to the start of the next name. It's 0x28 bytes. Now to confirm the pattern, lets make a third trainer right after the first two and see if it's 0x28 bytes appart.
+
+[spoiler]
+It is.
+[/spoiler]
+
+Well we've found the table and we know how to find a name given a trainer flag ID. The formula would just be:
+
+Trainer Offset Entry = [Offset of first entry - 0x28] + ( 0x28 * Flag ID)
+Where offset of first entry is obvious where "MARUS" starts (0x823EAF4). The reason we'll need to subtract 0x28 from 0x823EAF4 is because the trainer flag IDs start from 0x1 not 0x0.
+So we have to subtract 0x28. But how do we know the flag ID of the current trainer???
+Once again we need to work backwards from what we know.
+
+
+[h2]Conducting the investigations[/h2]
+
+
+Lets set a break point in the debugger when the game reads Janice's ID. From decompiling the trainer battle script in PKSV or XSE I can see that Janice's trainer ID is 0x74.
+So applying the formula, I want to break upon read at [Offset of first entry - 0x28] + ( 0x28 * 0x74) = 0x823FCEC for 7 bytes (JANICE's name's length + 1). So in the debugger that would be:
+"bpr 0823FCEC 7"
+
+For you, depending on the flag ID of the trainer you're battling, this value may be different. Just follow the provided formula.
+
+Once you've done that walk up and try to battle the trainer. The game should break at offset 0x8011376. Lets take a look at the code at this address.
+Here you may use IDA 6.5 for an easier time, but at this level of simplicity, VBA's disassembler is fine as well.
+
+In VBA (the emulator, not vba-sdl-h, also make sure you've opened a FireRed ROM) go to Tools -> disassemble. Tick the box that says "Thumb" and then type in "08011376" in the "GO" box. Hit go after you've type that, obviously :P
+
+[img]pic5[/img]
+
+So we've got some code, lets try and make some sense of what's here. Clearly right on 0x8011376 we have the command ldrb r1, [r1, #0x0], which is basically loading a byte into r1 from r1.
+That's where our break upon read broke, i.e r1 must have contained our address we wanted to break at. We need a look at the whole function body, or atleast most of it.
+
+Here it is:
+[code]
+ROM:08011366 loc_8011366:                            
+ROM:08011366                                         
+ROM:08011366                 MOVS    R6, #0
+ROM:08011368                 LDR     R0, =0x823EAC8
+ROM:0801136A                 LDR     R2, [SP,#0x20]
+ROM:0801136C                 LDR     R3, [SP,#0x14]
+ROM:0801136E                 ADDS    R1, R2, R3
+ROM:08011370                 LSLS    R1, R1, #3
+ROM:08011372                 ADDS    R3, R0, #4
+ROM:08011374                 ADDS    R1, R1, R3
+ROM:08011376                 LDRB    R1, [R1]
+ROM:08011378                 MOVS    R4, R0
+ROM:0801137A                 LDR     R0, [SP,#0x18]
+ROM:0801137C                 ADDS    R0, #1
+ROM:0801137E                 STR     R0, [SP,#0x1C]
+ROM:08011380                 CMP     R1, #0xFF
+ROM:08011382                 BEQ     loc_801139E
+ROM:08011384
+ROM:08011384 loc_8011384:                            
+ROM:08011384                 LDR     R0, [SP,#0x14]
+ROM:08011386                 ADDS    R1, R2, R0
+ROM:08011388                 LSLS    R1, R1, #3
+ROM:0801138A                 ADDS    R0, R6, R1
+ROM:0801138C                 ADDS    R0, R0, R3
+ROM:0801138E                 LDRB    R0, [R0]
+ROM:08011390                 ADD     R9, R0
+ROM:08011392                 ADDS    R6, #1
+ROM:08011394                 ADDS    R1, R6, R1
+ROM:08011396                 ADDS    R1, R1, R3
+ROM:08011398                 LDRB    R0, [R1]
+ROM:0801139A                 CMP     R0, #0xFF
+ROM:0801139C                 BNE     loc_8011384
+[/code] 
+
+Lets try and understand what's going on. Don't let the SP values and the "rawness" of the code scare you. It's actually quite simple and straight forward.
+
+Let me break it into pseudo code for you.
+
+[code]
+
+loc_8011366:
+
+r6 = 0
+r0 = start of table
+r2 = 0x1D0 @This is Flag ID * 4
+r3 = 0x74 @JANICE's flag ID
+
+r1 = r2 + r3 ; (so r1, = 0x1D0 + 0x74 = 0x244)
+
+r1 = r1 * #0x8 ; (so r1 = 0x1220 since 0x244 * 0x8 = 0x1220)
+
+r3 = r0 + 4 ; (so we add 4 to the offset of the table's start)
+
+r1 = r1 + r3 ; (Alright we've added in total 0x1224 to the start of the table)
+
+r1 = byte at r1 ; (First character of the name)
+
+r4 = start of table
+
+r0 = 0
+
+r0 = 1
+
+if r1 = 0xff jump @ end ; so check if the first letter is 0xFF (string terminater)
+
+loc_8011384:
+
+r0 = 0x74 ; JANICE's flag ID
+#
+#re-derrives the first byte of Janice's name
+#
+While ( r1[byte] != 0xFF):
+	;get next byte
+	;do some stuff that doesn't matter
+	;ect
+
+[/code]
+
+Alright on the first look, you and I can easily tell that this code here sucks at what it's trying to do. Well the first part is a precaution to not enter the loop if the name string is empty, but there's no need to derive things twice. Anyways that's besides the point. We still haven't found out how we know what the flag ID of the last trainer we battled is. Well, actually we're 2 steps closer. One step closer because we notice that the flag ID for Janice is actually derived BEFORE we even enter this part of the code. The second step closer because we see how much more superior our version of this
+code will be :D
+Now that we know that [SP, #0x14] holds the trainer's flag ID we just need to look back in the code till we find where that's done.
+
+
+[h2]Finding Where something is defined[/h2]
+
+
+Alright, so the code that keeps referencing the trainer ID is always something like ldr rX, [SP, #0x14]. So we need to find where in the code they've written to [SP, #0x14]
+That would be a line similar to str rX, [SP, #0x14]. Where rX would contain Janice's trainer ID (0x74). It's very likely that this value was written quite "recently" or a dozen
+functions ago. The point is that, there's going to be some repeat work we have to do.
+
+For this part, I reccomend that you use IDA. If you don't have IDA, then you can use VBA,  but you're only gimping yourself at this point. It's vastly superior to be using IDA because it has
+a reference look up feature which is really useful for this kind of thing. 
+
+In VBA's disassembler, you want to scroll up until you see a push statement or something funny. So we're starting at 08011366 obviously since that's where our little code snipplet from before started.
+From that part, you want to scroll up until you find that push statement or funny [???] or similar thing.
+
+Some scrolling after...
+
+[img]pic 6[/img]
+
+Oh we've found our funny stuff at 0801133C! Basically it's code which the dissembler is trying to read as thumb, but can't interpret. What is it and what does it mean/signify?
+Well lets scroll up a bit more to have a bigger picture.
+
+[img]pic 7[/img]
+
+The code in the snipplet reads
+
+[code]    
+08011324     ldr r3, [SP, #0x14] 
+08011326     add r0, r1, r3
+08011328     lsl r0, r0, #0x3
+0801132A     add r0, r0, r2
+0801132C     add r0, r0, #0x20
+0801132E     ldr r4, [SP, #0x18]
+08011330     b 0x801167E
+08011332     lsl r0, r0, #0x0
+08011334     cmp r4, #0x4C
+08011336     lsl r2, r0, #0x8
+08011338     lsr r0, r1, #0x4
+0801133A     lsl r0, r1, #0x0
+0801133C     [???]
+0801133E     lsr r3, r4, #0x0
+08011340     ldr r3, [SP, #0x14]
+[/code]
+
+But this doesn't make any sense! At 0x8011330 there's a "b 0x801167E" which is unavoidable. I.e the lines following it would be skipped. But the code we've been backtracking from also comes from around here. Well lets take a look at some of the code that's being skipped.
+
+[code]
+08011332     lsl r0, r0, #0x0   ; does nothing
+08011334     cmp r4, #0x4C  ; activates a flag, but it's never used...so does nothing
+08011336     lsl r2, r0, #0x8   ; r2 = r0 * 512
+08011338     lsr r0, r1, #0x4  ; r0 = r1 * 16
+0801133A     lsl r0, r1, #0x0  ; r0 = r1 * 2
+0801133C     [???]                 ; Uhh wut?
+0801133E     lsr r3, r4, #0x0 ; r3 = r4 * 1
+[/code]
+
+So you'll notice that most of this accomplishes absolutely nothing. But if we look at the hex version of the wierd part of this code..(which VBA so kindly has right beside the offset) we see this:
+
+[code]
+00 00 2B 4C 02 02 09 08 00 08 EA C8 08 23
+[/code]
+
+Now if you reverse hex some of it...
+00 00 02022B4c 08000908 0823EAC8
+
+You'll notice the first pair of bytes is padding, to keep the pointers word aligned. There are a couple of pointers after that, there's a RAM pointer, some other unknown pointer and a pointer to our trainer table. Don't get excited though. Generally, offset pointers appear at the bottom of functions or sections of code. This means that this RAM offset appears outside of the section we're in, but it probably comes from the same function because our function hasn't ended (no pop statements).
+Well then. If we can't keep scrolling further up, we need to find out where this part of our function is being called from.
+
+So at 0x8011340 is when the pointers seem to end (and the non-sense code. The lsr does't make sense bcause it's loading into r3, which is overwritten the next line.)
+
+Open up VBA-SDL-H again. This time we're going to set a thumb break point at 0x8011340 and see where it's breaking from.
+
+So the command you enter should be "bt 08011340".
+Type in c, then press enter to resume emulation. Now battle a trainer again, the game should break.
+
+[img]pic 8[/img]
+
+So a quick review of how VBA-SDL-H is representing the data.
+Beneath the register stats you'll see something like:
+
+[code]
+08011684 E65C b $08011340
+> 08011340 9b05 ldr r3, [sp. #0x14]
+08011342 18c8 add r0, r1, r3
+[/code]
+
+The first line is the previously executed command. The second line, with the ">" is the currently executing command, and the last line is the command to execute next.
+
+So we see that to get to our offset 0x8011340 (the offset we wanted to break at) the previous command ran was a branch command from 08011684.
+
+Hurry back onto you VBA emulater, and go to offset "08011684". Scroll up 5-ish lines too. 
+
+[img]pic9[/img]
+
+So we found where this function is being called from! Woo....not.
+It's being called from within itself :(
+Here's where the limitations of using VBA's disassembler comes in. It doesn't show us code references, unlike IDA. We know that some code MUST call our little portion of code, but we can't back track further because the actual code's body is being called on somewhere and unless we start breaking for the previous 100 or so lines, we can never find out.
+
+
+[h2]The ray of hope[/h2]
+
+Remember that part where we noticed a bunch of pointers? Well if you we're paying attention to what I said, I said [quote]This means that this RAM offset appears outside of the section we're in, but it probably comes from the same function.[/quote]
+We need to confirm what we guess though. So lets take a look at that snipplet of code again.
+
+[code]
+08011324     ldr r3, [SP, #0x14] 
+08011326     add r0, r1, r3
+08011328     lsl r0, r0, #0x3
+0801132A     add r0, r0, r2
+0801132C     add r0, r0, #0x20
+0801132E     ldr r4, [SP, #0x18]
+08011330     b 0x801167E
+
+@pointer data was here
+
+[/code]
+
+
+Oh, we see the occurrence of [SP, #0x14] again. But more importantly, the b 0x801167E! If we go to 0x801167E:
+
+[code]
+0801167E     ldrb r0, [r0, #0x0]
+08011680     cmp r4, r0
+08011682     bge #0x8011686
+08011684     b #0x8011340
+[/code]
+
+Bingo! We have located the code that jumps to our 0x8011340 location where we were previously stuck at.
+
+What does this mean? we can back track again, from 0x8011330 this time :P
+
+Getting to that offset, start to scroll up. We're looking for either a branch link, a str rX, [SP, #0x14] or a push statement.
+Once again the reason we're looking for a push statement, is because 95% of the time it signfies the start of a function (especially if r4-rX is pushed). If we can't find an
+assignment statement before the pushing of the registers, it probably means that the assigning of SP, #0x14 our Trainer Flag ID happened before the function was even called (which is actually quite likely if you think about it logically).
+The reason we're looking for a bl command (branch link) is because it's possible that the trainer ID was derrived in another helper function (which is also very likely). Finally, if we find a str rx, [SP, #0x14] we'll know where SP, #0x14 got it's value from
+and we'll be one step closer.
+
+After a little bit of scrolling...
+
+[img]pic11[/img]
+
+We've found a chunk of code with these 3 branches (normally rather significant lines)
+
+[code]
+08011312     cmp r0, #0x8
+08011314     beq #0x8011318
+08011316     b #0x801169C
+08011318     bl #0x803DA34
+[/code]
+
+
+Looking at this code, we see that it's translatable to something like this:
+[code]
+if r0 == #0x8 jump @func
+jump @ 0x801169C
+
+@func
+     #some stuff
+[/code]
+
+However, you can conclude that none of that actually matters. Normally we would NEED to confirm that the function it's branch linking to isn't the one that
+writing to SP, #0x14. However, if you look at my previous screen shot, you'll see a few lines up:
+[code]
+0801130C ldr r1, [SP, #0x14]
+[/code]
+SP, #0x14 is being referenced before the branching is even happening. However, we can't be sure that SP, #0x14 isn't being overwritten by there 3 branches somehow.
+So, now we need to do a break point at this offset (0x801130C) and confirm that in r1, the trainer ID was loaded. The reason we need to do that is so that we know that sp, #0x14 wasn't overwritten in the function call I mentioned before.
+Open up VBA-SDL-H, set a break point there. Once you get there press "n" to issue the next command till r1 has been successfully changed the whatever was in SP, #0x14. 
+
+Take the time to confirm that it was indeed the trainer ID.
+[spoiler]
+It was the trainer ID
+[/spoiler]
+
+Well, since it turned out to be the trainer ID, that means the value at SP, #0x14 had obviously been derived earlier. I.e we need to keep scrolling up.
+
+
+Some scrolling later...
+
+[img]pic12[/img]
+
+We've found the start of the function. You may notice that just a few lines later (the high lighted in blue one) that there's also a push statement there. I knew that this wasn't the start of the function because the Link register hasn't been pushed
+and nor has r4. That would imply that r4 is a paramater, and that there's no linking in this function. But clearly there is and r4 can't be a paramater by ASM standards. r0-r3 are saved for paramaters and any futher paramaters are written into the stack pointer instead.
+
+Anyways, the important part is that we found a nice little line.
+
+[img] pic13[/img]
+
+We found the line where [sp, #0x14] is written to.
+
+[code]
+080112F2     str r1, [SP, #0x14]
+[/code]
+
+From here we have a choice. We can either branch out from this function and save the value of r1 to some place in RAM which isn't overwritten (and we access it later in our routine), or we can keep back tracking and figuring out how r1 got it's value.
+I would keep going back. The reason is because in functions, as I mentioned, r0-r3 are considered Paramaters (though perhaps not all of them are used for every function). So that would imply r1 was derrived elsewhere and passed to this function. I.E if we keep going back we may be able to save some work OR we may be able to learn a little more.
+
+
+[h2]Back tracking, for science![/h2]
+
+
+We know that the function start at 080112E0, so we'll need to set a break point there in VBA-SDL-H. Then check the previous command to see where it was called from.
+So again, inv VBA-SDL-H, type in "bt 080112E0" to create a thumb breakpoint at that location.
+
+Restart the game and battle a trainer again with this break point. You should break after talking to the trainer.
+
+[img]pic14[/img]
+
+As seen in the screenshot, the previously executed command is:
+[code]
+0800FF92 F9A6 blh #0x34c
+[/code]
+
+Well that's not valid ASM...but do you know why? It's because this function was most likely called via a link. That is something like:
+"bl #0x80112E0". Unlike most thumb commands, BL takes 4 bytes(kinda..there's a reason it's taking 4, but I don't want to cause confusion so just take that for granted). The debugger shows in multiples of two, so we
+actually can't see the proper line unless we subtract 2 from 0800FF92 to be 0800FF90.
+
+Look up 0800FF90 in the VBA emulater's disassembler and you will indeed see "bl #0x80112E0" @ 0800FF90.
+
+Now we still haven't found where R1 is getting it's value from, so we need to scroll up some more..
+
+[img]pic15[/img]
+
+Looks like we're in luck!
+
+We've found just above the BL, where r1 get's it's value from.
+
+[code]
+0800FF8C ldr r1, =(0x20386AE)
+0800FF8E ldrh r1, [r1]
+[/code]
+
+It's being loaded from some RAM offset, sweet if that RAM offset isn't Dynamic/overwritten later. Lame if it is, because if it is, then we'll have no choice but to branch from here and write it to some "safer" RAM we can recall later.
+
+So what we need to confirm is that ram offset 0x20386AE holds the trainer ID even after battle.
+
+How do we do that? It's very simple! We battle the trainer, beat/lose to him/her and check the RAM at 0x20386AE.
+Open your VBA emulater's memory veiwer via tools -> memory viewer.
+
+Tick the "automatic update" box in the bottom left corner, and the 8 bit box on the top. Then in the GO box, type in 020386AE and hit GO.
+Finish battling the trainer and confirm if the flag wasn't erased.
+
+[spoiler]
+It's not erased (yay!)
+[/spoiler]
+
+
+Well boys, we lucked out...big time. Looks like we don't need to actually write a hook AND we've found the location in RAM which holds the Last battled trainer's ID.
+
+
+[h2]Writing ASM code for our findings[/h2]
+
+
+Most of the work is the research. Writing the code itself is generally easy, especially if you know what you're doing.
+
+Here's our relavent findings:
+
+1) Trainer's name is located at: 0x823EACC + ( 0x28 * Flag ID)
+2) Last battled trainer's ID is located at: 0x20386AE
+
+
+What we need:
+
+1) Read the trainer's name (it's 0xFF terminated and of variable length)
+2) Someway to place the trainer's name into some free RAM.
+
+If we can do these two then in the script we can just do something like
+"storetext 0x0 0x[ram location]" and recall the trainer's name that way.
+
+
+OK, so I'm going to give us a few freebies in this implementation. Freebie number one is that 02021D18 is the RAM location for displayed strings in textboxes for
+scripted messages. It's got a vast amount of free space and we can easily utilise it for our purpose. The second freebie is that there is a function to copy a string
+from X location to Y location, this function is at 08008D84. 
+
+Anyways, I won't be using the string copy function, because I want to demonstrate how a while loop would look like in ASM.
+
+Getting to the actual code, you'll want to start off with a basic template. Something like this:
+
+[code]
+.text
+.align 2
+.thumb
+.thumb_func
+
+main:
+
+
+.align 2
+[/code]
+
+^ It's been pointed out to me in the past that a lot of these "template" commands aren't actually needed. However, in some cases you may need them. Luckily the compiler ignores them if they're not needed, so there's no real reason to remove them.
+
+
+[code]
+.text
+.align 2
+.thumb
+.thumb_func
+
+main:
+	push {r0-rX, lr}
+	pop {r0-rX, pc}
+
+.align 2
+[/code]
+
+^ Right at the start I'm not sure how many registers this routine is going to take me. As you gain more experience, you'll be able to get a feel for these kinds of things. For now, just use the registers you need and update rX accordingly. Another thing to note is that you should be using the
+registers in consequent order. So don't do something like, push {r0, r2, r6, lr}, instead just use r0-r3.
+
+[code]
+.text
+.align 2
+.thumb
+.thumb_func
+
+main:
+	push {r0-rX, lr}
+
+calc_name_location:
+
+	@load half byte at 0x20386AE, that is the trainer ID
+	ldr r0, =(0x20386AE)
+	ldrh r0, [r0]
+
+	@multiply trainer ID by 0x28. The result is in r0
+	mov r1, #0x28
+	mul r0, r0, r1
+
+	@add the result in r0, to the start of our table
+	ldr r1, =(0x823EACC)
+	add r0, r0, r1
+	
+
+end:
+	pop {r0-rX, pc}
+
+.align 2
+[/code]
+
+^ OK, so I wrote the part for calculating the trainer's name location. This looks like a lot of code, but all it's doing is applying
+the formula we came up with. Namely, ID = 0x823EACC + ( 0x28 * [Half-word at 0x20386AE]). Comments follow the "@" sign for 1 line.
+You'll notice that I have an unused label "calc_name_location". This actually doesn't do anything to have that there, it's just useful for the human reader as it keeps the code
+looking organised (and even when you go back, you'll know what part is what). I recommend you pick up the habit :P
+
+
+Now we've got the offset to the start of the name in r0. What we need to do now is write a while loop to copy that string into the RAM location I provided
+which is 0x2021D18. Remember the string is 0xFF terminated, so we only need to copy until that 0xFF (inclusive).
+
+v In pseudo code, this is how we'll be writing the loop.
+
+[code]
+r0 = trainer name offset
+r1 = free RAM offset (0x2021D18)
+
+@start
+load byte from r0
+store byte in r1
+
+if byte was 0xFF:
+    end the loop
+else:
+    move r0 to be the next byte
+    move r1 to be the next byte
+    jump @start
+
+[/code]
+
+^ You'll notice that loading the byte from r0, and storing it in r1 would require another register.
+This is because we need to first use the ldrb command to load a byte from r0, without overwriting r0 or r1. 
+
+
+[code]
+.text
+.align 2
+.thumb
+.thumb_func
+
+main:
+	push {r0-r2, lr}
+
+calc_name_location:
+
+	@load half byte at 0x20386AE, that is the trainer ID
+	ldr r0, =(0x20386AE)
+	ldrh r0, [r0]
+
+	@multiply trainer ID by 0x28. The result is in r0
+	mov r1, #0x28
+	mul r0, r0, r1
+
+	@add the result in r0, to the start of our table
+	ldr r1, =(0x823EACC)
+	add r0, r0, r1
+
+	@we define r1 to be 0x2021D18 before entering the loop
+	@r0 is already defined by the calc_name_location portion
+	ldr r1, =(0x2021D18)
+loop:
+	@using r2 to get the byte from r0
+	@then store what's in r2, at r1
+	ldrb r2, [r0]
+	strb r2, [r1]
+
+	@if byte was 0xFF we exit the loop. I.e we're done
+	cmp r2, #0xFF
+	beq end
+	
+	@increment r0, to get the next character in the name
+	add r0, r0, #0x1
+
+	@increment r1, so when we write the next character, it won't overwrite the previous
+	add r1, r1, #0x1
+	b loop
+
+end:
+	pop {r0-r2, pc}
+
+.align 2
+[/code]
+
+ > We're actually done now. All this routine needed to do was get the trainer's name from the flag ID, then copy that name into RAM.
+From there you can use the buffer and store commands in XSE/PKSV to actually display the name in a text message. 
+Don't forget to update rX accordingly when you're done. In this case I just needed to use r0, r1 and r2. 
+
+v Actually, from a technical stand point, we don't need to push/pop anything except LR and PC. This is because our routine will be
+called from a script via callasm. The script interpreting engine is going to do something of similar behaviour to this:
+
+[code]
+...
+some code
+...
+push {r0-r3}
+ldr r0, =(Our routine +1)
+bl linker
+pop {r0,r3}
+...
+some code
+...
+
+linker:
+bx r0
+
+[/code]
+
+^ If not, it will assume that r0-r3 are overwritten. By ASM coding standards, this is a well defined rule. So that's why we don't need to push or pop {r0-r2} in this case.
+However, there's no harm in keeping it there (rather than using some extra operations), however, since our routine isn't called "often" it doesn't really matter. [s]Sorry daniilS, for today I have sinned[/s].
+
+
+Without comments, here's what it'd look like:
+[code]
+.text
+.align 2
+.thumb
+.thumb_func
+
+main:
+	push {lr}
+
+calc_name_location:
+	ldr r0, =(0x20386AE)
+	ldrh r0, [r0]
+	mov r1, #0x28
+	mul r0, r0, r1
+	ldr r1, =(0x823EACC)
+	add r0, r0, r1
+	ldr r1, =(0x2021D18)
+loop:
+	ldrb r2, [r0]
+	strb r2, [r1]
+	cmp r2, #0xFF
+	beq end
+	add r0, r0, #0x1
+	add r1, r1, #0x1
+	b loop
+
+end:
+	pop {pc}
+[/code]
+
+
+[h2]Ending notes:[/h2]
+
+I hope you noticed that we can do simple tweaks to this routine to make it output something else that's in the trainer table. Infact, if you ever need to display some text from a table, this is the structure
+that you would need to apply. The only thing that would change is the 0x28 (which was the space between entries in the table) and the start of the table (in this case the trainer table was 0x20386AE).
+
+So here's a challenge for you (yes I'm shamlessly copying HackMew and ShinyQuagsire's idea of having a little challenge at the end), make a routine to buffer the Trainer's class. I.e Lass, Camper...ect.
+
+
+
+
