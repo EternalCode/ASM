@@ -1,0 +1,210 @@
+[17:40] <knizz> ping
+[17:41] <FBI> Hey :P
+[17:42] <knizz> I'm gonna buy some food
+[17:42] <knizz> but in 15 min I'll have some time
+[17:42] <FBI> alright, I'll just type my question
+[17:42] <FBI> in preperation :P
+[17:42] <knizz> lol okay
+[17:43] <FBI> Pastebin of last time's code: (http://pastebin.com/RdNQuWCG)
+[17:44] <FBI> how did you know to call those 2 functions 0x8108D0 and 0x81083F4
+[17:45] <FBI> I'm currently trying to mimic this script except with the "Fly" map. I'm at the part where it seems to fade out and do nothing, similar to the problem we had before adding those 2 functions
+[18:07] <knizz> ready
+[18:07] <FBI> did you see what I typed?
+[18:07] <knizz> no
+[18:07] <knizz> just paste it
+[18:07] <FBI>  <FBI> Pastebin of last time's code: (http://pastebin.com/RdNQuWCG) [17:44] <FBI> how did you know to call those 2 functions 0x8108D0 and 0x81083F4 [17:45] <FBI> I'm currently trying to mimic this script except with the "Fly" map. I'm at the part where it seems to fade out and do nothing, similar to the problem we had before adding those 2 functions
+[18:08] <knizz> ah, well, I told you about how I found the invalid free() calls?
+[18:08] <FBI> nope
+[18:09] <knizz> well, I have my emulator with lua support
+[18:09] <knizz> and I used a script that breaks on the global bx r0… bx r13 functions
+[18:09] <knizz> and errors when the argument is 0
+[18:09] <knizz> so this happened in the modified rom
+[18:09] <FBI> :o
+[18:09] <knizz> And I investigated what events lead up to that invalid call.
+[18:09] <knizz> and found a bag shutdown function
+[18:10] <knizz> that tried to call free() on stuff that wasn't allocated in the frist place
+[18:10] <knizz> when I was there, it was only a matter of checking the references towards these pointers
+[18:10] <FBI> I'm in a similar pickle trying to make the Fly map appear standalone, and I can't find out wut needs to be called before :/
+[18:10] <knizz> and then I found the corresponding alloc functions
+[18:10] <FBI> also one more thing
+[18:10] <FBI> actually I did a bit of "snooping" around after that, and I found the part that REALLY takes care of the townmap part (it's 080C4F08) that will simply open the townmap without the bag
+[18:10] <knizz> fly should also be somewhere around brm_
+[18:10] <knizz> oh
+[18:11] <knizz> nice
+[18:11] <knizz> thanks
+[18:11] <FBI> useful to you?
+[18:11] <knizz> yes
+[18:11] <FBI> actually I was able to trace back the fly to this point as well, but I can't figure out where it assigns the special "fly to this location" feature
+[18:12] <FBI> I was thinking maybe it was a similar trick to how you figured out the bag thing, but I suppose it's unrelated
+[18:12] <knizz> starting ida now
+[18:14] <knizz> how'd you find it?
+[18:15] <FBI> I set a breakpoint at the HM_FLY_PREP part, and found what it called from it's bx part, and from there I kept setting breaks and found the instruction that appeared  before the link
+[18:16] <FBI> and looked it up in IDA, fast forward a few repetitions and I got there
+[18:24] <knizz> hm
+[18:29] <FBI> I can trace fly all the way back to 0812474C, which seems to be where it starts
+[18:30] <knizz> hm
+[18:30] <FBI> but I can't understand what those lines are trying to do
+[18:30] <FBI> it's a mystery :)
+[18:30] <knizz> I see
+[18:30] <knizz> press tab on that line
+[18:30] <knizz> it's written under "case 2:"
+[18:30] <knizz> the [2] entry in the hm_prepare_table is "fly"
+[18:30] <FBI> tab doesn't do anything :o?
+[18:31] <knizz> ida 6.5?
+[18:31] <FBI> yeah 6.5
+[18:31] <knizz> tab should give you a decompiled version
+[18:31] <FBI> Version 6.5.140116 (32-bit)
+[18:31] <knizz> of whatever assembly you're on
+[18:33] <FBI> Hmm, seems like my default keybinds are different
+[18:33] <FBI> I got this IDA from touched
+[18:33] <knizz> hm
+[18:33] <knizz> press f5
+[18:33] <knizz> at that line
+[18:33] <FBI> F5 doesn't do anything lol
+[18:34] <knizz> …
+[18:34] <knizz> I'll give you a proper copy later
+[18:34] <knizz> anyway
+[18:34] <knizz> so we have
+[18:34] <knizz> 080C4EF8 brm_fly
+[18:34] <knizz> which we just found
+[18:34] <knizz> and
+[18:34] <knizz> 080C4F08 town_map_standalone_apparently
+[18:34] <knizz> which you gave me
+[18:35] <FBI> mhm
+[18:35] <knizz> now navigate to 080C51E8 and press minus
+[18:36] <knizz> well, I'll make it short
+[18:36] * knizz makes screenshot
+[18:36] <FBI> it's a graph :o
+[18:36] <FBI> when I press minus
+[18:37] <knizz> expand the parents of 020399FC by clicking the (+)
+[18:37] <knizz> you see
+[18:37] <knizz> this variable is connected to both brm_fly and town_map_standalone
+[18:38] <FBI> the plus doesn't work for me :P
+[18:38] <FBI> you're supposed to click it?
+[18:38] <knizz> yes
+[18:38] <knizz> twice maybe?
+[18:39] <FBI> ahh yea twice
+[18:39] <FBI> it has 5 parents?
+[18:39] <FBI> omg, is that variable flag 0x845?
+[18:39] <knizz> ?
+[18:40] <FBI> nvm
+[18:40] <FBI> I came into a checkflag 0x845 somewhere along the run
+[18:40] <FBI> and I couldn't figure out what that was
+[18:42] <FBI> how do I get out of this graph view?
+[18:43] <knizz> press +
+[18:43] <FBI> ofc :P
+[18:45] <knizz> ah
+[18:45] <knizz> you're able to call that town map without bag now, right? try the same technique on 080C04E4+1
+[18:46] <FBI> alright
+[18:48] <FBI> Nope, didn't work. btw I called the map just by doing callasm the offset I gave you
+[18:49] <knizz> it crashed?
+[18:49] <knizz> or displayed the same map again?
+[18:50] <FBI> it did absolutely nothing hehe, no crash the NPC just faced me and kinda did nothing (I could still move around adn such)
+[18:50] <FBI> I presume some exit condition was reached
+[18:56] <knizz> I think I almost have it
+[18:56] <FBI> do share, I'm pulling my hair out trying to do figure this out myself :P
+[18:57] <knizz> try special FB
+[18:58] <FBI> special FB and then call it?
+[18:58] <knizz> no
+[18:58] <knizz> just the special FB
+[18:58] <FBI> kk
+[18:58] <FBI> is that special2 or just special?
+[18:59] <knizz> fun fact they're the same
+[18:59] <knizz> special1
+[18:59] <FBI> it gives a black screen
+[18:59] <knizz> :[
+[18:59] <knizz> damn
+[19:00] <FBI> hehe
+[19:00] <knizz> well i think 080BFF50 (maps_init) is central to the map starting process
+[19:00] <knizz> it has three callers
+[19:00] <knizz> two of it are town_map
+[19:00] <knizz> and one of them is this special
+[19:00] <knizz> the town_map ones pass 0 as first argument
+[19:00] <knizz> but the special FB calls it with 1
+[19:01] <knizz> I'll try to find a path between brm_fly and 080BFF50
+[19:01] <knizz> oh, there are lookalikes
+[19:01] <knizz> 080BFF50 maps_init_a (for townmap)
+[19:01] <FBI> wait, FF50 isn't called by fly?
+[19:01] <knizz> 080BFEDC maps_init_b (by fly)
+[19:01] <FBI> I think I set a break point there and tried flying
+[19:02] <FBI> and it didn't break
+[19:02] <FBI> let me try again
+[19:02] <knizz> wait
+[19:02] <knizz> read
+[19:02] <knizz> what I just wrote
+[19:02] <FBI> ok
+[19:02] <FBI> sec
+[19:02] <knizz> fly goes over maps_init_B
+[19:02] <knizz> not _A
+[19:03] <FBI> Oh, I see
+[19:06] <knizz> hm, they're not so different though
+[19:07] <knizz> http://privatepaste.com/bdb157437c
+[19:07] <knizz> vs
+[19:07] <knizz> http://privatepaste.com/07586a8fd3
+[19:07] <FBI> I'd think that one would require a paramater
+[19:07] <FBI> which would be the Pokemon, for the last animation part where it does the Fly animation
+[19:08] <knizz> ah
+[19:08] <knizz> the first parameter is the same for both functions
+[19:08] <knizz> and the fly code doesn't pass zero or one
+[19:08] <knizz> it passes two
+[19:08] <knizz> either way
+[19:08] <knizz> callasm to 080C4EF8+1
+[19:08] <knizz> That could work
+[19:08] <FBI> I just did that rite now hehe
+[19:08] <FBI> let me see the results gotta play through
+[19:09] <knizz> hehe
+[19:09] <FBI> it's teh same old blackscreen
+[19:09] <knizz> >:[
+[19:09] <FBI> but I shouuld mention this is the same blacksscreen we got when enabling the town_map thing
+[19:10] <FBI> well, I think the problem may be similar
+[19:12] <knizz> ah
+[19:12] <knizz> almost
+[19:13] <FBI> hmm, should I try making a routine to assign it a task?
+[19:13] <knizz> this function
+[19:13] <knizz> 080C4F08
+[19:13] <knizz> I wonder why you can call it at all
+[19:13] <knizz> and why calling it through the appropriate initialization functions FAILS
+[19:13] <knizz> anyway
+[19:13] <knizz> it's used in both fly and town map code
+[19:13] <knizz> only one byte some where that needs to be changed to switch the mode
+[19:14] <FBI> indeed, actually this is before the memory is allocated, correct?
+[19:14] <FBI> 080C4F08
+[19:14] <knizz> this is after allocation
+[19:14] <knizz> calling it directly
+[19:14] <knizz> shouldn't work
+[19:15] <FBI> yeah, that's what I found out
+[19:15] <FBI> I was stuck at the brm table part, which you told me was fly
+[19:15] <knizz> just tell me again
+[19:15] <knizz> how exactly did you manage to open a map without the bag
+[19:15] <knizz> without having had it open before
+[19:16] <FBI> anyways, I can't remember clearly but there was a break somewhere and it called the code you told me to call +1 from bx r1
+[19:16] <knizz> callasm to 080C4F08?
+[19:16] <FBI> I just simply did callasm 0xC4F09
+[19:16] <FBI> yeah in a script
+[19:17] <FBI> 080BFFD0 looks suspicious
+[19:17] <knizz> yes, that's the setup
+[19:18] <knizz> not even the complete one
+[19:18] <knizz> but execution passes through here
+[19:18] <FBI> 080C4F08 what did we say this was?
+[19:19] <FBI> I mean 080BFFEDC*
+[19:20] <knizz> 080BFFEDC has 9 digits
+[19:20] <knizz> ah okay
+[19:21] <FBI> I think it's the check at 080BFEEE
+[19:21] <FBI> removes the "set call back"
+[19:21] <knizz> this is the check for shutdown
+[19:21] <FBI> if 1
+[19:21] <FBI> Oh :#
+[19:22] <knizz> if (1)
+[19:22] <knizz> c2 = c2_for_map
+[19:22] <knizz> else
+[19:22] <knizz> c2 = c2_exit_to_overworld
+[19:22] <knizz> the value in r5 makes the difference between town and fly mp
+[19:22] <knizz> try breaking at 080BFF12
+[19:22] <knizz> while opening the townmap as usual
+[19:23] <knizz> edit register 5 to hold the value 2
+[19:23] <FBI> alright, 1 sec
+[19:23] <knizz> continue
+[19:24] <FBI> Oh right I overwrote his script, give me a minute
+[19:26] <FBI> for some reason the game is reseting, both on the direct map call and on the one we made through the bag :o
+[19:26] <FBI> qas working just a few mins ago
+[19:30] <FBI> I think I broke my computer lol...I can't even open the townmap from the bag after I've added it

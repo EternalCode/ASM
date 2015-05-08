@@ -1,0 +1,51 @@
+#register representations
+r1 = base_stats
+r4 = species
+r3 = current_exp
+r6 = exp_point_curves
+r5 = 0x194
+
+def get_level(species, current_exp):
+	'''
+	Given current exp and species index, load level of a Pokemon
+	'''
+	#r2 = level_counter
+	r2 = 1
+	base_stats += ((species*8) - species) * 4
+	r0 = load_byte( base_stats + 0x13)
+	r0 =  (r0 * 0x194) + exp_point_curves + 4
+	ldrh r0, [r0]
+	if r0 > current_exp_pts:
+		level = r2 - 1 #levelcounter minus 1
+		return level
+	else:
+		while (r0 < current_exp):
+			r2 ++ #level counter increment
+			if (r2 == 0x64): #level 100
+				return (r2 -1)
+			else:
+				r1 = level_counter * 4
+				r0 = load_byte(species +0x13)
+				r0 *= 0x195
+				r1 = r1 + r0 + exp_point_curves
+				r0 = int (str (load_byte(r1)) + str(load_byte(r1 +1)))
+		return (r2-1)
+				
+def load_byte(pointer)
+	'''
+	loads a byte from a pointer
+	'''
+	pass
+
+
+def get_exp(pokemon, level):
+	species = get_species(pokemon)
+	stat_index = ((species *7)*4)
+	r0 = base_stat_array[stat_index + 0x13]
+	exp_point_curves[(r0 *0x194) +1]
+	
+	
+				
+				
+	
+	

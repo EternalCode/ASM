@@ -1,0 +1,2 @@
+0802D496: E0 E0 @disable trainer blocking
+08040B36: 00 00 00 00 00 @disable trainer ID overwrite

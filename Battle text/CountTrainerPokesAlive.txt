@@ -1,0 +1,54 @@
+.text
+.align 2
+.thumb
+.thumb_func
+
+@Loops trainers pokemon, returns amount alive
+@if last pokemon, return's that pokemon's address in r0
+@else gives scalar number of pokemon alive in r0
+@ready for checking last pokemon is half HP flag
+
+main:
+	push {lr}
+	mov r3, #0x0
+	mov r2, r3
+	b loop
+
+loop:
+	cmp r3, #0x5
+	bge finalizeReturn
+	ldr r0, =(0x202402C)
+	mov r1, #0x64
+	mul r1, r1, r3
+	add r0, r0, r1
+	mov r1, #0x39
+	ldr r4, =(0x803FBE8 +1)
+	bl caller
+	cmp r0,  #0x0
+	bne increment
+	add r3, r3, #0x1
+	b loop
+
+increment:
+	add r2, r2, #0x1
+	add r3, r3, #0x1
+	mov r5, r0
+	b loop
+
+caller:
+	bx r4
+
+finalizeReturn:
+	cmp r2, #0x1
+	bne end
+	mov r0, r5
+	mov r1, #0x0
+	pop {pc}
+
+end
+	mov r0, r2
+	pop {pc}
+
+.align 2
+.VAR:
+	.word 0x020270B6 + (0x800D * 2)

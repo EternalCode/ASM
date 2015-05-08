@@ -1,0 +1,24 @@
+.text
+.align 2
+.thumb
+.thumb_func
+
+@ at 0x9A8CC insert the following byte changes:
+@ 00 4A 10 47 XX XX XX 08
+@where xx xx xx is wherever you inserted this routine +1
+ 
+main:
+	mul r0, r0, r1
+	ldr r1, =(0x83DB028)
+	add r0, r0, r1
+	ldrb r2, [r0]
+	cmp r2, #0xFF
+	bne end
+
+newPointer:
+	ldr r0, [r0, #0x4]
+end:
+	pop {pc}	
+		
+
+.align 2

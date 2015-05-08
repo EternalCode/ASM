@@ -1,0 +1,58 @@
+.text
+.align 2
+.thumb
+.thumb_func	
+
+
+main:
+	push {r0-r7, lr}
+	ldr r7, =(0x20370BA)
+	ldrb r7, [r7]
+	ldr r6, =(0x20370C0)
+	ldrb r6, [r6]
+	mov r0, #0x64
+	mul r0, r0, r6
+	ldr r6, =(0x2024284)
+	add r6, r6, r0
+	mov r5, r5, #0x0
+
+GenerateIV:
+	cmp r5, r7 @amount of perfect IV stats
+	beq end
+	ldr r0, =(0x20370B8)
+	mov r1, #0x6
+	strb r1, [r0]
+	ldr r4, .random
+	bl linker
+	mov r2, r0
+
+checkFreshIV:
+	mov r0, r6
+	mov r1, #0x27
+	add r1, r1, r2
+	push {r2}
+	ldr r4, =(0x803FBE8 +1)
+	bl linker
+	pop {r2}
+	cmp r0, #0x1F
+	beq GenerateIV
+
+setIV:
+	mov r0, r6
+	mov r1, #0x1F
+	ldr r4, =(0x20370D0)
+	strb r1,[r4]
+	mov r1, #0x27
+	add r1, r1, r2
+	ldr r4, =(0x804037C +1) @set IV 31
+	bl linker
+	add r5, r5, #0x1
+	b GenerateIV
+	
+end:
+	pop {r0-r7, pc}
+	
+.align 2
+
+.random:
+	.word 0xrandom
