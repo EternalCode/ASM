@@ -1,0 +1,44 @@
+Func 0810C11C:
+	r0: Species
+	r1: TID
+	r2: PID
+	r3: 0 = Backsprite, 1 = Front sprite
+	r4: transition control
+	r5: transition control
+	r6: pal number (0 and 1 seem to work)...
+	r7: Sprite view. 0x0 = back.
+	r8: x-pos
+	r9: y-pos
+
+Func 0810BBB4 (trainer Poke Image loader)
+r0: Sprite ID (species ID, or trainer sprite number)
+r1: ?? (0 seems default?)
+r2: Back = 0; Front = 1;
+r3: Pokemon/trainer loader. 1 = Trainer, 0 = Mon
+r4: Null, overwritten by species ID
+r5: Free space
+r6: PID
+
+Func 0810BDAC (OAM loader):
+
+r0: Sprite ID (species, trainer #)
+         		          SUB     SP, SP, #0x30
+ROM:0810BDB8                 STR     R1, [SP,#0xC] ; TID
+ROM:0810BDBA                 STR     R2, [SP,#0x10] ; PID
+ROM:0810BDBC                 LDR     R1, [SP,#0x50] ; X-pos
+ROM:0810BDBE                 LDR     R2, [SP,#0x54] ; Y-pos
+ROM:0810BDC0                 LDR     R4, [SP,#0x58] ; pal #
+ROM:0810BDC2                 LDR     R5, [SP,#0x5C]; Occupacity - 0 Silluette, 0000FFFF norm
+ROM:0810BDC4                 LDR     R6, [SP,#0x60]; Trainer or Poke toggle.
+ROM:0810BDC6                 LDR     R7, [SP,#0x64]; ??? (0 works..)
+...
+ROM:0810BDCE                 STR     R0, [SP,#8]      ; Species/TID
+...
+ROM:0810BDDA                 STR     R1, [SP,#0x18] ; X-pos
+...
+ROM:0810BDE0                 STR     R2, [SP,#0x1C]; Y-pos
+...
+ROM:0810BDD4                 STR     R3, [SP,#0x14] ; (0 back, 1 front)
+..
+ROM:0810BDE6                 STR     R4, [SP,#0x20] ; pal #
+

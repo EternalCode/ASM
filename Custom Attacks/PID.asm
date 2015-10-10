@@ -45,4 +45,4 @@ linkerOne:
 .align 2
 
 .VAR:
-	.word 0x020370B8
+	.word 0x020370CC
